@@ -1,48 +1,59 @@
-import { shade, abgr } from '../render/voxel/color.js';
+import { abgr } from '../render/voxel/color.js';
 
-// The landing page's pin-up: an anime-styled biker-club gal with long dark hair, a pink bikini with gold heart
-// rings, an open leather vest and biker boots, painted
-// pixel by pixel (shaded ellipses and limbs, light from the upper left, a dark outline). Her loop: she bounces on
-// her toes (hair and top trailing every hop, with a bit of squash and stretch), reaches for the knot, fiddles with
-// it like she's about to... then yanks it tight and wags a finger at you. The bikini top never comes open;
+// The landing page's pin-up, painted from scratch in code at HD pixel-art detail: our own anime-styled biker-club
+// gal, framed head to mid-thigh. Long dark hair with a teal sheen, a pink bikini with a gold heart clasp, an open
+// leather vest, one hand behind her head. Everything is built from shaded shapes (ellipses, tapered limbs,
+// profiles) lit from the upper left in cel bands with warm shadows, a rim of pool-blue light on the right, wet
+// sparkles on the skin, and line art wherever one part overlaps another.
+//
+// Her loop: she bounces (hair and top trailing every hop, with squash and stretch), reaches for the clasp, fiddles
+// with it like she's about to... then snaps it shut and wags a finger at you. The top never comes open;
 // tests/pinup.test.js checks every frame for that.
-const W = 96, H = 144, Y0 = 8; // Y0: headroom for the hop
-export const PINUP_GROUND = 138; // the row her boot soles stand on, for the shadow
+const W = 208, H = 320, CX = 104;
+export const PINUP_GROUND = H; // her frame is cut at mid-thigh: the sprite's bottom edge sits on the screen's
 
-const C = {
-  skin: 0xf6c09c, hair: 0x1c2630, hairHi: 0x4a8c9c, scarf: 0xf06a86, vest: 0x2c2630,
-  vestHi: 0x6a6070, patch: 0xffa21e, patchDk: 0x8a1e0c, belt: 0x3a2418,
-  steel: 0xd8dce4, boot: 0x221c24, glove: 0x2e262e, lips: 0xd0203a, mouth: 0x8a1428, white: 0xfaf6f0,
-  irisDk: 0x26323e, iris: 0x56707e, irisLt: 0xa6c4cc, lash: 0x140a10, gold: 0xffd84a, blush: 0xf2867e,
-  sparkle: 0xffe6a0,
+// Hand-picked ramps: [deep, shadow, base, light, spec]. Shadows lean warm, lights lean cool.
+const R = {
+  skin: [0xb8685a, 0xe39a7e, 0xf8c6a6, 0xffe2cc, 0xffffff],
+  hair: [0x0c1218, 0x141e28, 0x1e2c38, 0x2e5664, 0x5ab0bc],
+  bikini: [0xa8304e, 0xd84a6c, 0xf26c8c, 0xff9cb2, 0xffe0e8],
+  leather: [0x0c0a10, 0x18141e, 0x2a2532, 0x4a4458, 0x8c86a0],
+  glove: [0x0c0a10, 0x16121a, 0x221e28, 0x3a3444, 0x6a6478],
+  gold: [0x8a5a10, 0xc88c1c, 0xf2c23c, 0xffe27a, 0xffffff],
 };
-const TONES = [0.62, 0.8, 0.95, 1.1];
-const OUTLINE = 0x140810;
+const RIM = { skin: 0xd6eef0, hair: 0x2a6a78, bikini: 0xffc4d4, leather: 0x6a7c98, glove: 0x4a5468, gold: 0xfff2b0 };
+const LINE = 0x2a1418, OUTLINE = 0x140810;
+const EYE = { white: 0xfaf6f4, lid: 0xd6d8e6, irisDk: 0x173040, iris: 0x2f7486, irisLt: 0x7cd2da, pupil: 0x0c141c, lash: 0x1a0e16, glint: 0xfff0b8 };
+const MOUTH = { lip: 0xe0506a, dark: 0x5a1222, tongue: 0xe8707e, teeth: 0xfaf6f4 };
+const BLUSH = 0xf2928e, DROP = 0xe8fbff;
+const L = (() => { const v = [-0.5, -0.62, 0.6], m = Math.hypot(...v); return v.map(c => c / m); })(); // light from the upper left
 
-// The poses. Arms are [shoulder, elbow, hand] per side, in sprite pixels before the bounce. body: upper-body
-// offset; feet: boot offset; bust and hair: how far they trail the body (down +), so they swing past it on
-// every change of direction.
-const L_HIP = [[33, 41], [22, 56], [35, 70]], R_HIP = [[63, 41], [74, 56], [61, 70]];
-const bob = (body, feet, bust, hair, face = 'grin') => ({ pose: 'bob', body, feet, bust, hair, arms: [L_HIP, R_HIP], face });
+// ---- the poses ----
+// arm: [shoulder, elbow, hand] for her right arm (on the screen's right); her left hand stays behind her head.
+// body: whole-figure offset; bust and hair: how far they trail the body (down +), swinging past it on each turn.
+const HIP = [[146, 124], [174, 188], [150, 238]];
+const bob = (body, bust, hair, face = 'grin') => ({ pose: 'bob', body, bust, hair, arm: HIP, face });
 const FRAMES = [
-  bob(2, 0, 3, 1),          // landing crouch: everything keeps going down
-  bob(0, 0, 2, 2),          // pushing up: the top and hair lag behind
-  bob(-3, 0, 1, 1),         // rising
-  bob(-6, -5, -3, -1, 'grin'), // the top of the hop: they fly on up
-  bob(-4, -3, -2, -2, 'grin'), // falling: they float a moment
-  bob(0, 0, 1, 0),          // touchdown
-  { pose: 'reach', bust: 1, arms: [[[33, 41], [30, 60], [44, 48]], [[63, 41], [66, 60], [52, 48]]], face: 'smirk', knot: 'tied' },
-  { pose: 'knot', arms: [[[33, 41], [32, 59], [46, 45]], [[63, 41], [64, 59], [50, 45]]], face: 'glance', knot: 'tied' },
-  { pose: 'tease', bust: 1, arms: [[[33, 41], [31, 58], [43, 45]], [[63, 41], [65, 58], [53, 45]]], face: 'oh', knot: 'loose' },
-  { pose: 'snap', bust: -3, hair: -1, arms: [[[33, 41], [33, 56], [45, 41]], [[63, 41], [63, 56], [51, 41]]], face: 'grin', knot: 'flick' },
-  { pose: 'wag', bust: 2, arms: [L_HIP, [[63, 41], [73, 47], [67, 29]]], face: 'wink', finger: 0 },
-  { pose: 'wag', bust: -1, arms: [L_HIP, [[63, 41], [74, 47], [70, 30]]], face: 'wink', finger: 1 },
+  bob(3, 4, 2),             // landing crouch: everything keeps going down
+  bob(0, 3, 3),             // pushing up: the top and hair lag behind
+  bob(-4, 1, 2),            // rising
+  bob(-8, -4, -2),          // the top of the hop: they fly on up
+  bob(-6, -3, -3),          // falling: they float a moment
+  bob(0, 2, 0, 'smile'),    // touchdown
+  { pose: 'reach', bust: 1, arm: [[146, 124], [166, 176], [122, 158]], face: 'smirk', clasp: 'tied' },
+  { pose: 'knot', arm: [[146, 124], [158, 180], [110, 160]], face: 'glance', clasp: 'tied' },
+  { pose: 'tease', bust: 1, arm: [[146, 124], [160, 182], [114, 164]], face: 'oh', clasp: 'loose' },
+  { pose: 'snap', bust: -4, hair: -2, arm: [[146, 124], [162, 172], [110, 152]], face: 'grin', clasp: 'flick' },
+  { pose: 'wag', bust: 2, arm: [[146, 124], [178, 150], [154, 100]], face: 'wink', finger: -2 },
+  { pose: 'wag', bust: -1, arm: [[146, 124], [180, 152], [160, 102]], face: 'wink', finger: 2 },
 ];
 export const PINUP_FRAMES = FRAMES.length;
 
-// The loop, in seconds: a run of bounces, the reach, a fidgety tease, the snap, a finger wag.
+// The loop, in seconds: a run of bounces, a shimmy, the reach, a fidgety tease, the snap, a finger wag.
+const SHIMMY_TIME = 1.4;
 const SCRIPT = [
   [2.5, t => Math.floor(t * 12) % 6],
+  [SHIMMY_TIME, () => 5, 'shimmy'],
   [0.3, () => 6],
   [0.9, t => (t < 0.35 ? 7 : Math.floor(t * 8) % 2 ? 8 : 7)],
   [0.25, () => 9],
@@ -55,224 +66,285 @@ export function pinupFrame(t) {
   return 0;
 }
 
+// The shimmy is a deformation applied as she's drawn, row by row, so it works on any art, painted here or imported:
+// { s, lag } in -1..1, the body's swing and the chest's swing a beat behind it. Both 0 outside the shimmy.
+export function pinupShimmy(t) {
+  let u = ((t % PINUP_LOOP) + PINUP_LOOP) % PINUP_LOOP;
+  for (const [d, , kind] of SCRIPT) {
+    if (u < d) {
+      if (kind !== 'shimmy') return { s: 0, lag: 0 };
+      const env = Math.sin(Math.PI * u / d), w = 2 * Math.PI * 4.5; // eases in and out, 4.5 shakes a second
+      return { s: Math.sin(u * w) * env, lag: Math.sin(u * w - 0.9) * env };
+    }
+    u -= d;
+  }
+  return { s: 0, lag: 0 };
+}
+
+// How far (px) sprite row y moves in a shimmy: head a little, shoulders and chest one way (the chest trailing and
+// swinging furthest), the waist still, the hips the other way.
+const SWAY = lerpTable([[0, 2], [100, 3], [125, 5], [200, 2], [222, 0], [246, -4], [320, -4]]);
+const JIGGLE = lerpTable([[0, 0], [130, 0], [150, 5], [175, 5], [192, 0], [320, 0]]);
+export function shimmyOffset(y, s, lag) {
+  return Math.round(SWAY(y) * s + JIGGLE(y) * lag);
+}
+
+// ---- the painter ----
+// Every shape gets a part id; where a front part meets a different part behind it, its edge pixels become line
+// art, and the figure's silhouette gets a dark outline.
 function painter() {
-  const col = new Int32Array(W * H).fill(-1);
-  const put = (x, y, c) => { if (x >= 0 && y >= 0 && x < W && y < H) col[y * W + x] = c; };
-  // tone from a fake surface normal (nx, ny in -1..1); edge pixels a step darker so overlaps read
-  const lit = (c, nx, ny, edge) => shade(c, TONES[Math.max(0, Math.min(3, Math.round(1.9 - nx * 1.3 - ny * 1.0 - (edge ? 1 : 0))))]);
-  const ellipse = (cx, cy, rx, ry, c, { flat = false, pattern = null } = {}) => {
-    const inner = ((Math.min(rx, ry) - 1) / Math.min(rx, ry)) ** 2;
-    for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
-      const dx = (x + 0.5 - cx) / rx, dy = (y + 0.5 - cy) / ry, e = dx * dx + dy * dy;
-      if (e > 1) continue;
-      const base = pattern ? pattern(x, y) ?? c : c;
-      put(x, y, flat ? base : lit(base, dx, dy, e > inner));
-    }
+  const col = new Int32Array(W * H).fill(-1), part = new Uint16Array(W * H), lined = new Uint8Array(4096);
+  let pid = 0;
+  const putAny = (x, y, c) => { x = Math.round(x); y = Math.round(y); if (x >= 0 && y >= 0 && x < W && y < H) col[y * W + x] = c; };
+  // tone from a surface normal (nx, ny in the picture plane; nz from them)
+  const tone = (mat, nx, ny) => {
+    const nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny));
+    const t = nx * L[0] + ny * L[1] + nz * L[2], ramp = R[mat];
+    if (mat !== 'leather' && mat !== 'glove' && nx > 0.72 && ny > -0.6 && t < 0.4) return RIM[mat]; // pool light on the right edge
+    if (t > 0.965 && mat !== 'skin') return ramp[4];
+    return t > 0.74 ? ramp[3] : t > 0.36 ? ramp[2] : t > 0.06 ? ramp[1] : ramp[0];
   };
-  const limb = ([ax, ay], [bx, by], ra, rb, c) => {
-    const vx = bx - ax, vy = by - ay, len2 = vx * vx + vy * vy || 1, r = Math.max(ra, rb);
-    for (let y = Math.floor(Math.min(ay, by) - r); y <= Math.ceil(Math.max(ay, by) + r); y++) for (let x = Math.floor(Math.min(ax, bx) - r); x <= Math.ceil(Math.max(ax, bx) + r); x++) {
-      const px = x + 0.5, py = y + 0.5, t = Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / len2));
-      const qx = ax + vx * t, qy = ay + vy * t, rr = ra + (rb - ra) * t, d = Math.hypot(px - qx, py - qy);
-      if (d <= rr) put(x, y, lit(c, (px - qx) / rr, (py - qy) / rr - 0.2, d > rr - 1));
-    }
-  };
-  // rows of a shape: halfWidth(y) around cx, shaded across its width
-  const rows = (cx, y0, y1, halfWidth, c, pattern) => {
-    for (let y = y0; y <= y1; y++) {
-      const hw = halfWidth(y);
-      for (let x = Math.floor(cx - hw); x < Math.ceil(cx + hw); x++) {
-        const nx = (x + 0.5 - cx) / hw;
-        put(x, y, lit(pattern ? pattern(x, y) ?? c : c, nx, -0.1, Math.abs(nx) > 1 - 1.2 / hw));
+  // fill(test, mat): test(x, y) returns [nx, ny] inside the shape or null
+  const fill = (x0, y0, x1, y1, test, mat, { lines = true } = {}) => {
+    const id = ++pid;
+    lined[id] = lines ? 1 : 0;
+    for (let y = Math.max(0, Math.floor(y0)); y <= Math.min(H - 1, Math.ceil(y1)); y++) {
+      for (let x = Math.max(0, Math.floor(x0)); x <= Math.min(W - 1, Math.ceil(x1)); x++) {
+        const n = test(x + 0.5, y + 0.5);
+        if (!n) continue;
+        col[y * W + x] = tone(mat, n[0], n[1]);
+        part[y * W + x] = id;
       }
     }
+    return id;
   };
-  const outline = () => {
-    const filled = i => col[i] >= 0;
-    const add = [];
+  const ellipse = (cx, cy, rx, ry, mat, opts) => fill(cx - rx, cy - ry, cx + rx, cy + ry, (x, y) => {
+    const dx = (x - cx) / rx, dy = (y - cy) / ry;
+    return dx * dx + dy * dy <= 1 ? [dx * 0.95, dy * 0.95] : null;
+  }, mat, opts);
+  // a limb (or strand) from a to b, radius ra to rb
+  const limb = ([ax, ay], [bx, by], ra, rb, mat, opts) => {
+    const vx = bx - ax, vy = by - ay, len2 = vx * vx + vy * vy || 1, r = Math.max(ra, rb);
+    return fill(Math.min(ax, bx) - r, Math.min(ay, by) - r, Math.max(ax, bx) + r, Math.max(ay, by) + r, (x, y) => {
+      const t = Math.max(0, Math.min(1, ((x - ax) * vx + (y - ay) * vy) / len2));
+      const qx = ax + vx * t, qy = ay + vy * t, rr = ra + (rb - ra) * t, d = Math.hypot(x - qx, y - qy);
+      return d <= rr ? [((x - qx) / rr) * 0.95, ((y - qy) / rr) * 0.95 - 0.1] : null;
+    }, mat, opts);
+  };
+  // a body profile: halfWidth(y) around cx from y0 to y1, rounded across its width
+  const profile = (cx, y0, y1, halfWidth, mat, opts) => fill(cx - 70, y0, cx + 70, y1, (x, y) => {
+    const hw = halfWidth(y);
+    if (hw <= 0 || Math.abs(x - cx) > hw) return null;
+    return [((x - cx) / hw) * 0.92, -0.12];
+  }, mat, opts);
+  // line art where a front part meets a part behind it, then the silhouette outline
+  const ink = () => {
+    const out = new Int32Array(col);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x, p = part[i];
+      if (col[i] < 0 || !p || !lined[p]) continue;
+      for (const j of [i - 1, i + 1, i - W, i + W]) {
+        if (j < 0 || j >= W * H || (j === i - 1 && x === 0) || (j === i + 1 && x === W - 1)) continue;
+        if (col[j] >= 0 && part[j] && part[j] < p) { out[i] = LINE; break; }
+      }
+    }
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const i = y * W + x;
-      if (!filled(i) && ((x > 0 && filled(i - 1)) || (x < W - 1 && filled(i + 1)) || (y > 0 && filled(i - W)) || (y < H - 1 && filled(i + W)))) add.push(i);
+      if (col[i] >= 0) continue;
+      if ((x > 0 && col[i - 1] >= 0) || (x < W - 1 && col[i + 1] >= 0) || (y > 0 && col[i - W] >= 0) || (y < H - 1 && col[i + W] >= 0)) out[i] = OUTLINE;
     }
-    for (const i of add) col[i] = OUTLINE;
+    col.set(out);
   };
-  return { col, put, ellipse, limb, rows, outline };
+  return { col, putAny, fill, ellipse, limb, profile, ink };
 }
 
-const lerpTable = table => y => {
-  if (y <= table[0][0]) return table[0][1];
-  for (let i = 1; i < table.length; i++) if (y <= table[i][0]) {
-    const [y0, a] = table[i - 1], [y1, b] = table[i];
-    return a + (b - a) * (y - y0) / (y1 - y0);
+function lerpTable(table) {
+  return y => {
+    if (y <= table[0][0]) return table[0][1];
+    for (let i = 1; i < table.length; i++) if (y <= table[i][0]) {
+      const [y0, a] = table[i - 1], [y1, b] = table[i];
+      return a + (b - a) * (y - y0) / (y1 - y0);
+    }
+    return table[table.length - 1][1];
+  };
+}
+
+// A gold heart: 'big' (the bikini clasp, an open ring) or 'small' (the hip rings and the hair clip).
+function heart(p, x, y, size) {
+  const s = size === 'big' ? 1 : 0.6;
+  p.fill(x - 7 * s, y - 6 * s, x + 7 * s, y + 7 * s, (px, py) => {
+    const u = (px - x) / (6 * s), v = -(py - y) / (6 * s) + 0.15;
+    const f = (u * u + v * v - 1) ** 3 - u * u * v * v * v; // the classic heart curve
+    const inner = size === 'big' && ((u / 0.55) ** 2 + ((v - 0.1) / 0.55) ** 2) < 1;
+    return f <= 0 && !inner ? [u * 0.7, -v * 0.7] : null;
+  }, 'gold');
+}
+
+// Big anime eyes: a lidded white, a deep gradient iris with two glints, a heavy flicked upper lash.
+function eye(p, cx, cy, side, kind) {
+  const { putAny } = p;
+  if (kind === 'wink' && side > 0) { // a happy closed curve
+    for (let dx = -9; dx <= 9; dx++) { const y = cy + 1 - Math.round(4 * (1 - (dx / 9) ** 2)); putAny(cx + dx, y, EYE.lash); putAny(cx + dx, y + 1, EYE.lash); }
+    putAny(cx + 10, cy - 2, EYE.lash); putAny(cx + 11, cy - 3, EYE.lash);
+    return;
   }
-  return table[table.length - 1][1];
-};
-
-// A gold heart, 'big' (the bikini clasp, an open ring) or 'small' (hip rings, the hair clip), centred on x, y.
-function heart(put, x, y, size) {
-  const cx = Math.round(x), cy = Math.round(y);
-  const big = [[-2, -1], [-1, -2], [1, -2], [2, -1], [-2, 0], [2, 0], [-1, 1], [1, 1], [0, 2], [0, -1]];
-  const small = [[-1, -1], [1, -1], [-1, 0], [0, 0], [1, 0], [0, 1]];
-  for (const [dx, dy] of size === 'big' ? big : small) put(cx + dx, cy + dy, dy < 0 ? shade(C.gold, 1.1) : C.gold);
+  const look = kind === 'glance' || kind === 'oh' ? 2 : side < 0 ? 1 : -1; // irises lean in, or both glance aside
+  for (let dy = -7; dy <= 7; dy++) for (let dx = -9; dx <= 9; dx++) {
+    if ((dx / 9.5) ** 2 + (dy / 7.5) ** 2 > 1) continue;
+    const ix = (dx - look) / 6, iy = (dy - 0.5) / 7;
+    let c = dy < -4 ? EYE.lid : EYE.white;
+    if (ix * ix + iy * iy <= 1) c = dy < -2 ? EYE.irisDk : dy < 3 ? EYE.iris : EYE.irisLt;
+    if (((dx - look) / 2.4) ** 2 + ((dy - 0.5) / 3.4) ** 2 <= 1) c = EYE.pupil;
+    putAny(cx + dx, cy + dy, c);
+  }
+  for (const [gx, gy] of [[-3, -3], [-2, -3], [-3, -2], [-2, -2], [-3, -1]]) putAny(cx + look + gx, cy + gy, EYE.white); // the big glint
+  putAny(cx + look + 3, cy + 3, EYE.glint); putAny(cx + look + 2, cy + 3, EYE.glint);
+  for (let dx = -10; dx <= 10; dx++) { // the upper lash, thick, following the lid
+    const y = cy - Math.round(7.5 * Math.sqrt(Math.max(0, 1 - (dx / 10.5) ** 2)));
+    putAny(cx + dx, y, EYE.lash); putAny(cx + dx, y - 1, EYE.lash);
+    if (Math.abs(dx) < 7) putAny(cx + dx, y + 1, EYE.lash);
+  }
+  const o = side < 0 ? -1 : 1; // the flick at the outer corner
+  for (const [fx, fy] of [[10, -1], [11, -2], [12, -3], [12, -4], [11, -1]]) putAny(cx + o * fx, cy + fy, EYE.lash);
+  for (let dx = 4; dx <= 8; dx++) putAny(cx + o * dx, cy + 7, EYE.lash); // lower lash, outer half
 }
 
-// Big anime eyes (4 wide, 4 tall, a highlight in each), thin brows, a dot of a nose, a small mouth.
-function face(p, hx, hy, kind) {
-  const { put } = p;
-  const look = kind === 'glance' || kind === 'oh';
-  const eye = (ex, side) => { // ex: the eye's left column; side -1 is the eye on the left of the screen
-    const y0 = hy;
-    const flick = side < 0 ? ex - 2 : ex + 5;
-    if (kind === 'wink' && side > 0) { // a happy closed curve
-      for (const [x, y] of [[ex, y0 + 2], [ex + 1, y0 + 1], [ex + 2, y0 + 1], [ex + 3, y0 + 2]]) put(x, y, C.lash);
-      put(flick, y0 + 1, C.lash);
-      return;
-    }
-    for (let x = ex - 1; x <= ex + 4; x++) put(x, y0 - 1, C.lash); // the heavy upper lash
-    put(flick, y0 - 2, C.lash);
-    for (let y = y0; y <= y0 + 3; y++) for (let x = ex; x <= ex + 3; x++) put(x, y, C.white);
-    const ix = look ? ex + 1 : side < 0 ? ex + 1 : ex; // the irises lean toward the middle, or both glance aside
-    const tone = [C.irisDk, C.iris, C.iris, C.irisLt];
-    for (let y = 0; y < 4; y++) for (let x = 0; x < 3; x++) put(ix + x, y0 + y, tone[y]);
-    put(ix + 1, y0 + 1, C.lash); put(ix + 1, y0 + 2, C.irisDk); // pupil
-    put(ix, y0 + 1, C.white); put(ix + 2, y0 + 2, C.sparkle); // two sparkles
-    put(ex + 1, y0 + 4, shade(C.skin, 0.82)); put(ex + 2, y0 + 4, shade(C.skin, 0.82)); // lower lid
-  };
-  eye(41, -1); eye(52, 1);
-  const brow = (ex, up) => { put(ex, hy - 3 - up, C.hair); put(ex + 1, hy - 4 - up, C.hair); put(ex + 2, hy - 4 - up, C.hair); put(ex + 3, hy - 4 - up, C.hair); };
-  brow(41, 0); brow(52, kind === 'glance' || kind === 'wink' ? 1 : 0);
-  for (const x of [39, 40, 41, 42, 54, 55, 56, 57]) put(x, hy + 5, C.blush);
-  for (const x of [40, 41, 55, 56]) put(x, hy + 6, shade(C.blush, 1.05));
-  put(48, hy + 6, shade(C.skin, 0.75)); // nose
-  put(52, hy + 9, C.lash); // beauty mark
-  const m = hy + 8;
+function face(p, cx, cy, kind) {
+  const { putAny } = p;
+  eye(p, cx - 15, cy, -1, kind); eye(p, cx + 15, cy, 1, kind);
+  const brow = (x, up) => { for (let dx = -6; dx <= 6; dx++) putAny(x + dx, cy - 13 - up - Math.round(2 * (1 - (dx / 6) ** 2)), R.hair[1]); };
+  brow(cx - 15, 0); brow(cx + 15, kind === 'glance' || kind === 'wink' ? 2 : 0);
+  for (let i = 0; i < 4; i++) for (const bx of [cx - 21, cx + 13]) putAny(bx + i * 2, cy + 11 - (i % 2), BLUSH); // hatched blush
+  for (let i = 0; i < 4; i++) for (const bx of [cx - 20, cx + 14]) putAny(bx + i * 2, cy + 13 - (i % 2), BLUSH);
+  putAny(cx + 1, cy + 12, R.skin[1]); putAny(cx + 1, cy + 13, R.skin[1]); // nose
+  const m = cy + 21;
   if (kind === 'oh') {
-    put(47, m, C.mouth); put(48, m, C.mouth); put(47, m + 1, C.mouth); put(48, m + 1, C.lips);
-  } else if (kind === 'grin') { // the open anime "D" grin
-    for (let x = 45; x <= 51; x++) put(x, m, C.mouth);
-    for (let x = 46; x <= 50; x++) put(x, m + 1, x === 48 ? C.lips : C.mouth);
-    for (let x = 46; x <= 50; x++) put(x, m - 1, C.white);
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (dx * dx + dy * dy <= 5) putAny(cx + dx, m + dy, dx * dx + dy * dy >= 4 ? MOUTH.lip : MOUTH.dark);
+  } else if (kind === 'grin') { // the open "D" smile, teeth on top and tongue below
+    for (let dy = 0; dy <= 6; dy++) {
+      const hw = Math.round(8 * Math.sqrt(1 - (dy / 7) ** 2));
+      for (let dx = -hw; dx <= hw; dx++) putAny(cx + dx, m - 2 + dy, dy === 0 ? MOUTH.teeth : dy >= 4 && Math.abs(dx) < hw - 1 ? MOUTH.tongue : MOUTH.dark);
+    }
+    for (let dx = -9; dx <= 9; dx++) putAny(cx + dx, m - 3 + (Math.abs(dx) > 7 ? 1 : 0), MOUTH.lip);
   } else {
-    for (let x = 46; x <= 50; x++) put(x, m, C.lips);
-    put(48, m + 1, shade(C.lips, 1.15));
-    put(51, m - 1, C.lips); // corners up; a smirk only on one side
-    if (kind !== 'smirk' && kind !== 'wink') put(45, m - 1, C.lips);
+    for (let dx = -6; dx <= 6; dx++) putAny(cx + dx, m + Math.round((dx / 6) ** 2 * -2), MOUTH.lip);
+    putAny(cx + 7, m - 3, MOUTH.lip);
+    if (kind !== 'smirk' && kind !== 'wink') putAny(cx - 7, m - 3, MOUTH.lip);
+    if (kind === 'wink') { putAny(cx + 1, m + 1, MOUTH.tongue); putAny(cx + 2, m + 1, MOUTH.tongue); putAny(cx + 1, m + 2, MOUTH.tongue); } // a cheeky tongue tip
   }
 }
 
-// One frame as { px (Uint32 ABGR), w, h, pose, lift }. lift: how far her boots are off the ground.
-// arms: false bakes her without them (an x-ray, so the tests can see the whole top behind her hands).
+// One frame as { px (Uint32 ABGR), w, h, pose, lift }.
+// arms: false bakes her without her moving arm (an x-ray, so the tests can see the whole top behind her hand).
 export function bakePinup(frame, { arms = true } = {}) {
   const f = FRAMES[((frame % FRAMES.length) + FRAMES.length) % FRAMES.length];
-  const p = painter(), { ellipse, limb, rows, put } = p;
-  const by = Y0 + (f.body ?? 0), fy = Y0 + (f.feet ?? 0), hairLag = f.hair ?? 0, bustLag = f.bust ?? 0;
+  const p = painter(), { ellipse, limb, profile, fill, putAny } = p;
+  const by = f.body ?? 0, bl = by + (f.bust ?? 0), hl = f.hair ?? 0;
   const at = ([x, y]) => [x, y + by];
-  const hx = 48, hy = 21 + by;
+  const hy = 62 + by; // the head's centre
 
-  // long straight hair down her back, its ends swinging behind her on every hop
-  const strands = (x, y) => (x % 5 === 2 && (y + x) % 11 < 6 ? C.hairHi : null); // long vertical streaks of teal sheen
-  ellipse(hx, hy + 2 + hairLag, 12.5, 12, C.hair, { pattern: strands });
-  rows(48, hy + 8, hy + 34 + hairLag * 2, y => 13 - Math.max(0, y - (hy + 26)) * 0.6, C.hair, strands);
+  // 1. her hair, behind everything: the crown, a long fall to the hips, ends swinging behind her
+  ellipse(CX, hy + 6 + hl * 0.5, 42, 44, 'hair', { lines: false });
+  profile(CX, hy + 20, 262 + by + hl * 2, lerpTable([[hy + 20, 44], [hy + 80, 52], [hy + 150, 50], [hy + 200, 36]].map(([y, w]) => [y + hl, w])), 'hair', { lines: false });
+  for (let k = -3; k <= 3; k++) limb([CX + k * 13, 228 + by + hl], [CX + k * 17 - hl * 2, 270 + by + hl * 3 - Math.abs(k) * 4], 8, 1, 'hair');
 
-  // bare legs in knee-high biker boots
-  const hipL = [42, 85 + by], hipR = [54, 85 + by], squat = Math.max(0, f.body ?? 0);
-  const kneeL = [39 - squat, 101 + (by + fy) / 2], kneeR = [57 + squat, 101 + (by + fy) / 2];
-  const ankleL = [41, 122 + fy], ankleR = [55, 122 + fy];
-  limb(hipL, kneeL, 6, 3.6, C.skin); limb(kneeL, ankleL, 3.8, 3, C.skin);
-  limb(hipR, kneeR, 6, 3.6, C.skin); limb(kneeR, ankleR, 3.8, 3, C.skin);
-  for (const [ax, ay] of [ankleL, ankleR]) {
-    limb([ax, ay - 12], [ax, ay + 2], 4.8, 4.2, C.boot);
-    for (let x = -5; x <= 4; x++) put(ax + x, ay - 13, C.vestHi); // the cuff
-    for (const dy of [-8, -3]) for (let x = -4; x <= 3; x++) put(ax + x, ay + dy, C.steel); // buckle straps
-    ellipse(ax + (ax < 48 ? -2 : 2), ay + 5, 6, 3, C.boot);
-    for (let x = -7; x <= 6; x++) put(ax + x + (ax < 48 ? -2 : 2), ay + 7, 0x0a080c); // sole
+  // 2. her left arm, raised, hand tucked behind her head
+  limb([62, 126 + by], [34, 70 + by], 10, 8, 'skin');
+  limb([34, 70 + by], [74, 40 + by], 8, 7, 'skin');
+
+  // 3. legs (cut at mid-thigh by the frame), then the body over their tops
+  limb([82, 262 + by], [74, 336 + by], 25, 22, 'skin');
+  limb([126, 262 + by], [134, 336 + by], 25, 22, 'skin');
+  limb([104, hy + 22], [104, 126 + by], 11, 13, 'skin', { lines: false }); // neck, from behind the chin
+  const torso = lerpTable([[110, 12], [116, 34], [122, 45], [132, 45], [150, 40], [172, 31], [194, 26], [210, 28], [232, 42], [246, 47], [258, 46], [270, 38], [282, 24], [292, 10]]);
+  profile(CX, 110 + by, 292 + by, y => torso(y - by), 'skin');
+  for (let k = 0; k < 9; k++) { putAny(CX - 38 + k * 3, 120 + by + Math.round(k * 0.6), R.skin[1]); putAny(CX + 38 - k * 3, 120 + by + Math.round(k * 0.6), R.skin[1]); } // collarbones
+  for (let y = 212; y <= 216; y++) putAny(CX, y + by, R.skin[y === 212 ? 0 : 1]); // navel
+  for (let y = 176; y <= 206; y += 2) putAny(CX - 1, y + by, R.skin[1]); // the soft line down her middle
+
+  // 4. bikini bottoms: a front brief, strings over the hips, gold heart rings
+  const brief = lerpTable([[246, 38], [254, 31], [266, 20], [278, 11], [290, 4]]);
+  fill(CX - 40, 240 + by, CX + 40, 292 + by, (x, y) => {
+    const v = y - by, hw = brief(v), top = 246 - Math.round(((x - CX) / 38) ** 2 * 5);
+    return v >= top && Math.abs(x - CX) <= hw ? [((x - CX) / 40) * 0.85, (v - 268) / 40] : null;
+  }, 'bikini');
+  limb([CX - 38, 241 + by], [CX - 48, 236 + by], 1.4, 1.2, 'bikini'); limb([CX + 38, 241 + by], [CX + 48, 236 + by], 1.4, 1.2, 'bikini');
+  heart(p, CX - 36, 244 + by, 'small'); heart(p, CX + 36, 244 + by, 'small');
+
+  // 5. the bikini top over her chest: skin, then two cups that trail the bounce (squashed when they land,
+  // stretched when they fly), halter straps round the neck, a centre band and the heart clasp she teases
+  const lag = f.bust ?? 0, squash = lag >= 3 ? [1.5, -1.5] : lag <= -3 ? [-1, 1.5] : [0, 0];
+  const rx = 23 + squash[0], ry = 21 + squash[1];
+  ellipse(CX - 20, 156 + bl, rx, ry, 'skin');
+  ellipse(CX + 20, 156 + bl, rx, ry, 'skin');
+  for (let y = 140; y <= 162; y++) putAny(CX + (y > 150 ? 0 : (y % 2)), y + bl, R.skin[y < 146 ? 1 : 0]); // the line between them
+  const cup = cx => fill(cx - rx, 140 + bl, cx + rx, 178 + bl, (x, y) => {
+    const dx = (x - cx) / (rx - 3), dy = (y - (162 + bl)) / (ry - 4);
+    const tri = y - bl >= 146 - Math.abs(x - cx) * 0.55; // a triangle cup: a point at the top, full below
+    return dx * dx + dy * dy <= 1 && tri ? [dx * 0.9, dy * 0.9 - 0.1] : null;
+  }, 'bikini');
+  cup(CX - 21); cup(CX + 21);
+  limb([CX - 23, 142 + bl], [CX - 10, 108 + by], 1.4, 1.2, 'bikini'); limb([CX + 23, 142 + bl], [CX + 10, 108 + by], 1.4, 1.2, 'bikini'); // halter straps
+  limb([CX - 6, 160 + bl], [CX + 6, 160 + bl], 2.6, 2.6, 'bikini'); // the centre band
+  const clasp = f.clasp ?? 'tied';
+  if (clasp === 'loose') { heart(p, CX + 2, 162 + bl, 'big'); limb([CX - 3, 166 + bl], [CX - 6, 178 + bl], 1.1, 0.8, 'bikini'); }
+  else heart(p, CX, 160 + bl, 'big');
+  if (clasp === 'flick') for (const [dx, dy] of [[0, -11], [0, -12], [-1, -11], [1, -11], [0, -10], [9, -3], [-9, -3]]) putAny(CX + dx, 160 + bl + dy, 0xffffff);
+
+  // 6. the open leather vest, hanging off her shoulders, with a club patch
+  const vest = side => fill(CX - 62, 112 + by, CX + 62, 236 + by, (x, y) => {
+    const v = y - by, d = (x - CX) * side, outer = torso(v) + 4, lapel = lerpTable([[112, 14], [130, 38], [150, 44], [176, 34], [200, 28], [236, 31]])(v);
+    return d >= lapel && d <= outer ? [side * 0.5, -0.2 + (v - 170) / 200] : null;
+  }, 'leather');
+  vest(-1); vest(1);
+  ellipse(CX + 36, 206 + by, 5, 5, 'gold', { lines: false }); // the patch: a little flaming skull
+  for (const [dx, dy, c] of [[-2, 0, 0x2a1418], [2, 0, 0x2a1418], [0, 2, 0x2a1418], [-3, -6, 0xff6a1a], [0, -7, 0xff6a1a], [3, -6, 0xff6a1a]]) putAny(CX + 36 + dx, 206 + by + dy, c);
+
+  // 7. her right arm: on her hip, or reaching for the clasp, or wagging a finger
+  if (arms) {
+    const [s, e, h] = f.arm.map(at);
+    limb(s, e, 10, 8, 'skin');
+    limb(e, h, 8, 6.5, 'skin');
+    const ux = h[0] - e[0], uy = h[1] - e[1], ul = Math.hypot(ux, uy);
+    limb([h[0] - (ux / ul) * 6, h[1] - (uy / ul) * 6], [h[0] - (ux / ul) * 1, h[1] - (uy / ul) * 1], 7, 7, 'glove'); // a studded cuff
+    ellipse(h[0], h[1], 7.5, 6.5, 'glove'); // fingerless glove
+    if (f.finger !== undefined) limb([h[0], h[1] - 5], [h[0] + f.finger, h[1] - 17], 2.6, 2.2, 'skin');
   }
 
-  // torso, seen from the front: shoulders, a tight waist, wide hips, then the pelvis narrowing into a V between the thighs
-  const torso = lerpTable([[35, 5], [38, 12], [41, 15], [46, 14.5], [54, 11], [60, 8.5], [66, 8], [71, 12], [77, 14.5], [81, 13], [85, 9], [88, 4]]);
-  rows(48, 35 + by, 88 + by, y => torso(y - by), C.skin);
-  put(48, 64 + by, shade(C.skin, 0.7)); // belly button
-  for (const side of [-1, 1]) for (let i = 0; i < 4; i++) put(48 + side * (11 - i), 75 + i + by, shade(C.skin, 0.8)); // hip bones
-  const bottoms = lerpTable([[78, 10.5], [89, 2]]); // a front brief: a straight V from the waistband down
-  rows(48, 78 + by, 89 + by, y => bottoms(y - by), C.scarf);
-  for (const side of [-1, 1]) { // strings riding up over the hips, each through a little gold heart
-    for (let d = 10; d <= 14; d++) put(48 + side * d, 78 + by - (d > 12 ? 1 : 0), C.scarf);
-    heart(put, 48 + side * 11.5, 77 + by, 'small');
+  // 8. the head: a round crown and a pointed anime chin, then the face
+  ellipse(CX, hy - 2, 30, 30, 'skin', { lines: false });
+  profile(CX, hy + 4, hy + 34, lerpTable([[hy + 4, 30], [hy + 16, 27], [hy + 26, 18], [hy + 31, 9], [hy + 34, 3]]), 'skin', { lines: false });
+  face(p, CX, hy + 6, f.face);
+  for (let r = 0; r <= 4; r++) for (let x = CX - 10 + r * 2; x <= CX + 10 - r * 2; x++) putAny(x, hy + 35 + r, r === 0 ? R.skin[0] : R.skin[1]); // a V of shadow under her chin
+
+  // 9. the front hair: a crown cap, pointed bangs, long locks framing her face, a heart clip, a shine band
+  fill(CX - 34, hy - 34, CX + 34, hy - 6, (x, y) => {
+    const dx = (x - CX) / 33, dy = (y - (hy - 4)) / 31;
+    return dx * dx + dy * dy <= 1 && y < hy - 8 ? [dx * 0.9, dy * 0.9] : null;
+  }, 'hair', { lines: false });
+  const LEN = [2, 6, 1, 8, 3, 9, 4, 7, 1, 5, 0];
+  for (let k = -5; k <= 5; k++) { // bangs: fine tapered strands of uneven length, alternate ones inked so they separate
+    const rootX = CX + k * 5.5, tipX = CX + k * 6.2 + (k < 0 ? -1 : 1) * (Math.abs(k) > 3 ? 2 : 0), tipY = hy - 6 + LEN[k + 5] - Math.abs(k) * 0.8;
+    limb([rootX, hy - 30], [tipX, tipY], 4.6, 0.5, 'hair', { lines: k % 2 === 0 });
   }
-  for (let x = 32; x <= 64; x++) put(x, Math.round(73 + by + (x - 32) * 0.12), x % 3 ? C.belt : C.steel); // a studded belt, slung low
-  for (let x = 51; x <= 53; x++) for (let y = 75; y <= 76; y++) put(x, y + by, C.steel); // its buckle
-  for (let x = 55; x <= 63; x++) put(x, 79 + by + (x % 3 === 0 ? 1 : 0), C.steel); // a wallet chain
-
-  // the bikini top: two big cups that trail the bounce (squashed when they land, stretched when they fly),
-  // halter strings up to her neck, and the front tie she teases
-  const bust = by + bustLag;
-  const squash = bustLag >= 2 ? [1, -1] : bustLag <= -2 ? [-0.5, 1] : [0, 0];
-  const rx = 10 + squash[0], ry = 9 + squash[1];
-  ellipse(41, 51 + bust, rx, ry, C.skin);
-  ellipse(55, 51 + bust, rx, ry, C.skin);
-  for (let y = 45; y <= 52; y++) put(48, y + bust, shade(C.skin, 0.72)); // the line between them
-  ellipse(41.5, 52 + bust, rx - 1.5, ry - 1, C.scarf);
-  ellipse(54.5, 52 + bust, rx - 1.5, ry - 1, C.scarf);
-  rows(48, 46 + bust, 50 + bust, () => 3, C.scarf); // the front band, where the clasp joins it
-  limb([40, 44 + bust], [44.5, 36 + by], 0.6, 0.6, C.scarf); limb([56, 44 + bust], [51.5, 36 + by], 0.6, 0.6, C.scarf); // halter strings, round the neck
-  const k = f.knot ?? 'tied', kx = 48, ky = 47 + bust;
-  if (k === 'loose') { // the clasp tugged askew, a loose end dangling
-    heart(put, kx + 1, ky + 1, 'big');
-    limb([kx - 1, ky + 3], [kx - 3, ky + 8], 0.7, 0.6, C.scarf);
-  } else if (k === 'flick') { // snapped shut, with a glint
-    heart(put, kx, ky, 'big');
-    for (const [dx, dy] of [[0, -4], [0, -5], [-1, -4], [1, -4], [4, -1], [-4, -1]]) put(kx + dx, ky + dy, C.sparkle);
-  } else heart(put, kx, ky, 'big');
-
-  // the open leather vest, with a club patch
-  const vestOut = y => torso(y) + 2.5, lapel = lerpTable([[37, 5], [42, 9], [46, 16], [56, 16], [60, 9], [63, 6], [70, 6.5]]);
-  for (let y = 37; y <= 70; y++) for (const side of [-1, 1]) {
-    const outer = Math.max(vestOut(y), lapel(y) + 1), inner = lapel(y);
-    for (let d = Math.ceil(inner); d <= Math.ceil(outer); d++) {
-      const x = side < 0 ? Math.floor(48 - d) : Math.ceil(48 + d) - 1;
-      const edge = d === Math.ceil(inner) || d === Math.ceil(outer);
-      put(x, y + by, edge ? shade(C.vest, 0.7) : d === Math.ceil(inner) + 1 ? C.vestHi : C.vest);
-    }
+  limb([CX - 30, hy - 14], [CX - 40, hy + 82 + hl], 8, 2, 'hair'); // locks framing her face, swinging
+  limb([CX + 30, hy - 14], [CX + 42, hy + 70 + hl], 8, 2, 'hair');
+  limb([CX + 34, hy + 20], [CX + 48, hy + 110 + hl * 2], 6, 1.5, 'hair');
+  for (let dx = -18; dx <= 18; dx++) { // the shine band arcing over the crown
+    const y = hy - 24 + Math.round((dx / 18) ** 2 * 6);
+    if ((dx + 30) % 7 > 1) { putAny(CX + dx, y, R.hair[4]); putAny(CX + dx, y + 1, R.hair[3]); }
   }
-  ellipse(38, 64 + by, 3, 3, C.patch); put(37, 64 + by, C.patchDk); put(39, 64 + by, C.patchDk); put(38, 66 + by, C.patchDk); // a flaming skull
-  for (const x of [36, 38, 40]) put(x, 60 + by, C.patch);
+  heart(p, CX + 24, hy - 16, 'small'); // hair clip
 
-  // neck and head: a round crown and a pointed anime chin
-  limb([48, hy + 8], [48, 37 + by], 3, 3.6, C.skin);
-  ellipse(hx, hy - 1, 9.5, 9.5, C.skin);
-  ellipse(hx, hy + 5, 7, 6, C.skin);
-  face(p, hx, hy, f.face);
-  // the crown, straight bangs with ragged tips, locks hanging beside her face, a gold heart clip
-  const halo = (x, y) => (y === hy - 8 + Math.round(((x - 48) / 7) ** 2) && Math.abs(x - 48) <= 7 ? C.hairHi : null); // the shine band arcing across the crown
-  rows(48, hy - 12, hy - 3, y => 10.5 * Math.sqrt(Math.max(0, 1 - ((y - (hy - 2)) / 10.5) ** 2)), C.hair, halo);
-  for (let x = 39; x <= 57; x++) if ((x * 5) % 3 !== 0) put(x, hy - 2, C.hair);
-  for (let x = 40; x <= 56; x += 3) put(x, hy - 1, C.hair);
-  limb([38.5, hy - 4], [37.5, hy + 12 + hairLag], 1.8, 1.4, C.hair);
-  limb([57.5, hy - 4], [58.5, hy + 10 + hairLag], 1.8, 1.4, C.hair);
-  heart(put, 54, hy - 4, 'small'); // hair clip
-  // one long lock over her shoulder, gathered in a gold tie, swinging with the bounce
-  limb([57, hy + 4], [61, hy + 18 + hairLag], 2.6, 2.2, C.hair);
-  limb([61, hy + 18 + hairLag], [62, hy + 30 + hairLag * 2], 2.2, 1, C.hair);
-  for (const [dx, dy] of [[-1, 0], [0, 1], [1, 0], [0, -1], [-1, 2], [1, 2]]) put(61 + dx, hy + 16 + hairLag + dy, C.gold);
-
-  // arms, gloves and studded cuffs
-  for (const [s, e, h] of arms ? f.arms : []) {
-    limb(at(s), at(e), 3.4, 2.8, C.skin);
-    limb(at(e), at(h), 2.8, 2.3, C.skin);
-    const [cx, cy] = at(h), [ex, ey] = at(e);
-    const ux = (cx - ex) / Math.hypot(cx - ex, cy - ey), uy = (cy - ey) / Math.hypot(cx - ex, cy - ey);
-    for (let i = -2; i <= 2; i++) put(Math.round(cx - ux * 3 - uy * i), Math.round(cy - uy * 3 + ux * i), i % 2 ? C.steel : C.glove);
-    ellipse(cx, cy, 3, 2.6, C.glove);
-  }
-  if (arms && f.finger !== undefined) { // the wagging finger, a bare fingertip out of the glove
-    const [cx, cy] = at(f.arms[1][2]);
-    limb([cx, cy - 2], [cx + (f.finger ? 1 : -2), cy - 8], 1.1, 1, C.skin);
+  // 10. wet sparkles on her skin
+  for (const [x, y] of [[66, 132], [68, 134], [140, 130], [84, 300], [86, 302], [130, 296], [92, 196], [118, 226]]) {
+    putAny(x, y + by, 0xffffff); putAny(x + 1, y + by + 1, DROP);
   }
 
-  p.outline();
+  p.ink();
   const px = new Uint32Array(W * H);
   for (let i = 0; i < px.length; i++) if (p.col[i] >= 0) px[i] = abgr(p.col[i]);
-  return { px, w: W, h: H, pose: f.pose, lift: Math.max(0, -(f.feet ?? 0)) };
+  return { px, w: W, h: H, pose: f.pose, lift: Math.max(0, -by) };
 }
 
 // Browser only: each frame as a canvas, baked on first use.

@@ -1,6 +1,6 @@
 import { drawText, textWidth } from './font.js';
 import { VIEW_W, VIEW_H } from '../game/camera.js';
-import { standings } from '../game/race.js';
+import { standings, graceLeft } from '../game/race.js';
 import { WEAPONS } from '../combat/weapons.js';
 import { DRIVERS } from '../drivers/drivers.js';
 import { drawIcon } from '../ui/icons.js';
@@ -75,10 +75,20 @@ export function drawHud(ctx, { race, player, banner, t, portrait = null, minimap
     center(ctx, s, 47, Math.floor(t * 8) % 2 ? '#ff3b5c' : '#ffe14a');
   }
 
-  if (race.phase === 'countdown') {
-    center(ctx, String(Math.ceil(race.countdown)), 70, '#ffe14a', 6);
-  } else if (race.time < 1.2) {
-    center(ctx, 'GO!', 70, '#3cff7a', 6);
+  if (race.phase === 'countdown') { // a big number that punches in each second: red, orange, yellow
+    const n = Math.max(1, Math.ceil(race.countdown)), frac = race.countdown - (n - 1), scale = 8 + Math.round(frac * 8);
+    center(ctx, String(n), Math.round(130 - scale * 2.5), n >= 3 ? '#ff3b5c' : n === 2 ? '#ff9a1e' : '#ffe14a', scale);
+    box(ctx, 150, 44, VIEW_W - 300, 13, 0.7); // under the loadout banner, clear of the cars on the grid
+    center(ctx, 'ARROWS/WASD DRIVE   SPACE FIRE   SHIFT DROP   E NITRO', 47, '#e8e2ea');
+  } else if (race.time < 1) {
+    const scale = 16 - Math.round(race.time * 6);
+    if (race.time < 0.6 || Math.floor(race.time * 12) % 2) center(ctx, 'GO!', Math.round(130 - scale * 2.5), '#3cff7a', scale);
+  }
+  const left = race.phase === 'racing' && !player.finished ? graceLeft(race) : null;
+  if (left !== null) { // someone finished: the clock is running on everyone else
+    const s = `RACE ENDS IN ${Math.ceil(left)}`;
+    box(ctx, ((VIEW_W - textWidth(s, 2)) / 2 | 0) - 6, 44, textWidth(s, 2) + 12, 16, 0.75);
+    center(ctx, s, 47, left < 10 && Math.floor(t * 4) % 2 ? '#ff3b5c' : '#ffe14a', 2);
   }
 
   if (banner) {
@@ -93,15 +103,21 @@ export function drawHud(ctx, { race, player, banner, t, portrait = null, minimap
   if (race.phase === 'finished') drawResults(ctx, race, order, player);
 }
 
+// The results headline: the truth, even when the race was called before you crossed the line.
+export function resultHeadline(place, finished) {
+  if (!finished) return 'DID NOT FINISH';
+  return place === 1 ? 'YOU WON!' : `YOU FINISHED ${['1ST', '2ND', '3RD', '4TH'][place - 1]}`;
+}
+
 function drawResults(ctx, race, order, player) {
   box(ctx, 60, 50, VIEW_W - 120, 30 + order.length * 10, 0.85);
   const place = order.indexOf(player) + 1;
-  center(ctx, place === 1 ? 'YOU WON!' : `YOU FINISHED ${['1ST', '2ND', '3RD', '4TH'][place - 1]}`, 56, place === 1 ? '#3cff7a' : '#ffe14a', 2);
+  center(ctx, resultHeadline(place, player.finished), 56, place === 1 && player.finished ? '#3cff7a' : player.finished ? '#ffe14a' : '#ff3b5c', 2);
   order.forEach((c, i) => {
     const y = 74 + i * 10;
     drawText(ctx, `${i + 1}. ${c.name}`, 72, y, c.color);
     drawText(ctx, c.finished ? fmt(c.finishTime) : 'DNF', 180, y, '#fff');
     drawText(ctx, `${c.kills} KILLS`, 236, y, '#ff8a6a');
   });
-  center(ctx, 'PRESS R TO RACE AGAIN   ESC FOR THE MENU', 80 + order.length * 10 - 2, '#a99fb8');
+  center(ctx, 'R RACE AGAIN   ESC PICK A NEW COMBO', 80 + order.length * 10 - 2, '#a99fb8');
 }

@@ -29,8 +29,11 @@ function wreck(race, car, attacker, cause) {
   for (const fn of race.onWreck ?? []) fn(race, car, attacker, cause);
 }
 
+// After a respawn (from a wreck or out of a pit) a car can't be hurt for a moment: no landing on a mine.
+export const SPAWN_SAFE = 1.5; // s
+
 export function applyDamage(race, victim, amount, attacker, cause) {
-  if (victim.wrecked || victim.fallen || amount <= 0) return;
+  if (victim.wrecked || victim.fallen || amount <= 0 || race.time < (victim.safeUntil ?? -1)) return;
   victim.armor -= amount;
   if (attacker && attacker !== victim) { victim.lastHitBy = attacker; victim.lastHitTime = race.time; }
   if (amount >= 1) race.events.push({ type: 'hit', car: victim, attacker, amount, cause });
@@ -53,6 +56,7 @@ export const combatSystem = {
           respawn(car, race.track);
           car.wrecked = false;
           car.armor = car.maxArmor;
+          car.safeUntil = race.time + SPAWN_SAFE;
           race.events.push({ type: 'respawn', car });
         }
         return;
@@ -63,7 +67,7 @@ export const combatSystem = {
         car.boostTimer = NITRO_TIME * (1 + (car.stats.nitroBoost ?? 0));
         race.events.push({ type: 'nitro', car });
       }
-      car.boostTimer = Math.max(0, car.boostTimer - dt);
+      if (car.grounded) car.boostTimer = Math.max(0, car.boostTimer - dt); // nitro only pushes on the ground, so it keeps in the air
       const behind = leader - car.dist > CATCHUP_GAP;
       const boosting = car.boostTimer > 0;
       car.speedMul = (boosting ? NITRO_SPEED : 1) * (behind ? CATCHUP_SPEED : 1);
@@ -83,6 +87,7 @@ export const combatSystem = {
         if (by) by.kills++;
         race.events.push({ type: 'fell', car, attacker: by });
       }
+      if (car.wasFallen && !car.fallen) car.safeUntil = race.time + SPAWN_SAFE; // climbed out of the pit
       car.wasFallen = car.fallen;
     }
   },

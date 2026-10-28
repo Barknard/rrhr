@@ -56,7 +56,7 @@ export function input(s, action) {
   const out = {};
   switch (s.screen) {
     case 'gate':
-      if (action === 'ok') { s.screen = 'title'; Object.assign(out, { sfx: 'ui_select', speak: 'Roll! And! Rock! Hard! Racing!' }); }
+      if (action === 'ok') { s.screen = 'title'; s.titleAt = s.t; Object.assign(out, { sfx: 'ui_select', speak: 'Roll! And! Rock! Hard! Racing!' }); }
       else if (action === 'back') out.leave = true;
       break;
     case 'title':
@@ -126,7 +126,8 @@ export function input(s, action) {
       } else { // combo: review the pairing, pick the weapons, then GO TO RACE
         const r = COMBO_ROWS.indexOf(sel.row);
         if (action === 'up' || action === 'down') { sel.row = COMBO_ROWS[Math.max(0, Math.min(COMBO_ROWS.length - 1, r + (action === 'up' ? -1 : 1)))]; out.sfx = 'ui_move'; }
-        else if ((action === 'left' || action === 'right') && sel.row !== 'go') {
+        else if (action === 'left' || action === 'right') { // from GO, left/right goes straight to the gun
+          if (sel.row === 'go') sel.row = 'forward';
           const list = sel.row === 'forward' ? FORWARD_WEAPONS : DROP_WEAPONS, d = action === 'left' ? -1 : 1;
           s.loadout[sel.row] = list[wrap(list.indexOf(s.loadout[sel.row]) + d, list.length)];
           out.sfx = 'ui_move';

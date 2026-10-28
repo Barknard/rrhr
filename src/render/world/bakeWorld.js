@@ -134,6 +134,12 @@ export function bakeWorld(track) {
     }
   }
 
-  const toLayer = (gx, gy, gz = 0) => [origin.x + (gx - gy) * HX, origin.y + (gx + gy) * HY - gz * ZS];
-  return { W, H, origin, base, hot, kind, heat, props: terrain.props, toLayer };
+  return withToLayer({ W, H, origin, base, hot, kind, heat, props: terrain.props });
+}
+
+// Gives a world (fresh, or cloned back from the bake worker, where functions can't travel) its grid-to-layer mapping.
+export function withToLayer(world) {
+  const { origin } = world;
+  world.toLayer = (gx, gy, gz = 0) => [origin.x + (gx - gy) * HX, origin.y + (gx + gy) * HY - gz * ZS];
+  return world;
 }

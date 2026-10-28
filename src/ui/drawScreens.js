@@ -4,7 +4,7 @@ import { drawIcon, WEAPON_INFO } from './icons.js';
 import { WEAPONS } from '../combat/weapons.js';
 import { DRIVERS, DRIVER_KEYS, statBars } from '../drivers/drivers.js';
 import { CAR_STATS, CLASSES } from '../cars/carStats.js';
-import { pinupCanvas, pinupFrame, PINUP_GROUND } from './pinup.js';
+import { pinupCanvas, pinupFrame, pinupShimmy, shimmyOffset, PINUP_GROUND } from './pinup.js';
 
 // Draws whichever front-end screen is active, at 640x360. assets: { lava, showcase, portrait(key, frame) }.
 const W = 640, H = 360;
@@ -47,12 +47,13 @@ function drawGate(ctx, s) {
   }
   ctx.fillStyle = '#7a0c12';
   for (let i = 0; i < W; i += 24) { ctx.fillRect(i, 0, 12, 6); ctx.fillRect(i + 12, H - 6, 12, 6); } // hazard edges
-  const pin = pinupCanvas(pinupFrame(s.t)), scale = 2, ground = 344;
-  const x = 140 - (pin.canvas.width * scale) / 2, top = ground - PINUP_GROUND * scale;
-  ctx.fillStyle = 'rgba(0,0,0,0.6)'; // her shadow shrinks when she hops
-  ctx.beginPath(); ctx.ellipse(140, ground, 34 - pin.lift * 2, 6 - pin.lift / 2, 0, 0, Math.PI * 2); ctx.fill();
+  const pin = pinupCanvas(pinupFrame(s.t)); // painted at full detail: drawn 1:1, cut at mid-thigh by the bottom of the screen
+  const px = Math.round(140 - pin.canvas.width / 2), py = H - PINUP_GROUND, sh = pinupShimmy(s.t);
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(pin.canvas, Math.round(x), Math.round(top), pin.canvas.width * scale, pin.canvas.height * scale);
+  if (!sh.s && !sh.lag) ctx.drawImage(pin.canvas, px, py);
+  else for (let y = 0; y < pin.canvas.height; y++) { // the shimmy: each row slides its own way
+    ctx.drawImage(pin.canvas, 0, y, pin.canvas.width, 1, px + shimmyOffset(y, sh.s, sh.lag), py + y, pin.canvas.width, 1);
+  }
 
   const cx = 450;
   flameText(ctx, 'HOLD IT', cx, 40, 6, s.t);
@@ -62,21 +63,37 @@ function drawGate(ctx, s) {
   drawCentered(ctx, 'ESC TO LEAVE', cx, 312, '#8a8094', '#000', 1);
 }
 
+// The title opens like a trailer: the logo slams down from huge, a white flash and a shake, the tagline types
+// itself out, then the menu slides in one line at a time. e: seconds since the title appeared.
 function drawTitle(ctx, s, a) {
+  const e = s.t - (s.titleAt ?? -10), ease = k => Math.max(0, Math.min(1, k));
   a.lava.draw(ctx, s.t, 0);
   ctx.fillStyle = 'rgba(6,3,8,0.45)'; ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  if (e > 0.3 && e < 0.6) ctx.translate(Math.round((pseudo(s.t * 60) - 0.5) * 10 * (0.6 - e) / 0.3), Math.round((pseudo(s.t * 77) - 0.5) * 10 * (0.6 - e) / 0.3));
+  const z = 1 + (1 - ease(e / 0.3)) ** 2 * 3;
+  ctx.save(); ctx.translate(W / 2, 90); ctx.scale(z, z); ctx.translate(-W / 2, -90);
   flameText(ctx, 'ROLL AND ROCK', W / 2, 46, 7, s.t);
   flameText(ctx, 'HARD RACING', W / 2, 98, 9, s.t + 0.37);
-  drawCentered(ctx, 'AN ADULTS-ONLY COMBAT RACER', W / 2, 152, '#e8e2ea', '#000', 1);
+  ctx.restore();
+  const tag = 'AN ADULTS-ONLY COMBAT RACER';
+  drawCentered(ctx, tag.slice(0, Math.floor(ease((e - 0.5) / 0.6) * tag.length)), W / 2, 152, '#e8e2ea', '#000', 1);
+  const slide = i => Math.round(-((1 - ease((e - 0.7 - i * 0.07) / 0.25)) ** 2) * 340);
+  ctx.save(); ctx.translate(slide(0), 0);
   box(ctx, W / 2 - 110, 178, 220, 22 + MENU.length * 18);
+  ctx.restore();
   MENU.forEach((m, i) => {
+    ctx.save(); ctx.translate(slide(i + 1), 0);
     const y = 190 + i * 18, sel = i === s.menuIdx;
     const label = m.disabled ? `${m.label}` : m.label;
     drawCentered(ctx, label, W / 2, y, m.disabled ? '#6a6070' : sel ? '#ffd84a' : '#e8e2ea', '#000', 2);
     if (sel) { const w = textWidth(label, 2) / 2 + 14; drawText(ctx, '>', W / 2 - w - 4 + (blink(s.t, 4) ? 0 : 2), y, '#ff6a1a', '#000', 2); drawText(ctx, '<', W / 2 + w - 2 - (blink(s.t, 4) ? 0 : 2), y, '#ff6a1a', '#000', 2); }
     if (m.disabled) drawText(ctx, 'SOON', W / 2 + 84, y + 3, '#8a5a30', null, 1);
+    ctx.restore();
   });
-  drawCentered(ctx, 'ARROWS OR WASD TO MOVE   ENTER TO PICK   ESC TO GO BACK', W / 2, H - 14, '#a99fb8', '#000', 1);
+  if (e > 1.2) drawCentered(ctx, 'ARROWS OR WASD TO MOVE   ENTER TO PICK   ESC TO GO BACK', W / 2, H - 14, '#a99fb8', '#000', 1);
+  ctx.restore();
+  if (e > 0.3 && e < 0.55) { ctx.fillStyle = `rgba(255,244,214,${((0.55 - e) / 0.25) * 0.85})`; ctx.fillRect(0, 0, W, H); } // the slam's flash
 }
 
 function drawOptions(ctx, s, a) {
@@ -130,7 +147,7 @@ function drawCombo(ctx, s, a, dt) {
   a.lava.draw(ctx, s.t, 2);
   const sel = s.select, dKey = DRIVER_KEYS[sel.driverIdx], d = DRIVERS[dKey], vKey = VEHICLE_KEYS[sel.vehicleIdx], v = CAR_STATS[vKey];
   const fav = d.fav === vKey;
-  flameText(ctx, 'YOUR COMBO', W / 2, 8, 4, s.t);
+  if (!s.captionOn) flameText(ctx, 'YOUR COMBO', W / 2, 8, 4, s.t); // while the announcer talks, his caption takes the title's place
 
   // driver
   box(ctx, 10, 36, 120, 136);
@@ -206,6 +223,8 @@ function drawSelect(ctx, s, a, dt) {
     ctx.fillStyle = on ? '#3a1810' : '#140e18'; ctx.fillRect(x + 2, y + 2, 60, 68);
     portrait(ctx, a, k, x + 32, y + 58, s.t, i);
     drawCentered(ctx, DRIVERS[k].short.replace(/^the /i, ''), x + 32, y + 62, on ? '#ffd84a' : '#a99fb8', '#000', 1);
+    if (sel.step === 'vehicle' && !on) { ctx.fillStyle = 'rgba(8,6,12,0.62)'; ctx.fillRect(x, y, 64, 72); } // the driver is picked: the rest step back
+    if (sel.step === 'vehicle' && on) drawCentered(ctx, 'LOCKED IN', x + 32, y + 5, '#3cff7a', '#000', 1);
   });
 
   // driver card under the grid
@@ -215,7 +234,6 @@ function drawSelect(ctx, s, a, dt) {
   drawText(ctx, `SKILL: ${d.skill.name}`, 18, 242, '#29e3ff', '#000', 1);
   drawText(ctx, d.skill.text, 18, 252, '#e8e2ea', '#000', 1);
   drawText(ctx, `FAVORITE RIDE: ${CAR_STATS[d.fav].name}`, 18, 266, '#ff8a6a', '#000', 1);
-  drawText(ctx, 'LV 1', 250, 218, '#3cff7a', '#000', 1);
 
   // vehicle turntable, right
   box(ctx, 296, 44, 334, 160, 'rgba(8,6,12,0.55)');

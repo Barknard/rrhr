@@ -189,8 +189,9 @@ export const weaponSystem = {
     race.cars.forEach((car, i) => {
       if (!alive(car) || car.finished) return; // finished cars cruise home, they don't shoot
       const input = inputs[i] ?? {}, prev = car.prevInput ?? {};
-      if (input.fire && !prev.fire) fire(race, car, 'forward');
-      if (input.drop && !prev.drop) fire(race, car, 'drop');
+      for (const [key, slot] of [['fire', 'forward'], ['drop', 'drop']]) { // a press on empty is reported, so the HUD can say so
+        if (input[key] && !prev[key] && !fire(race, car, slot)) race.events.push({ type: 'empty', car, slot });
+      }
       if (car.napalm) {
         car.napalm.timer -= dt;
         if (car.napalm.timer <= 0) {

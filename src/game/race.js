@@ -9,8 +9,8 @@ import { abilitySystem, ramOnBump, gunnerOnLap, setupAbilities } from '../combat
 import { combineStats } from '../drivers/drivers.js';
 import { driverSkillSystem } from '../drivers/skills.js';
 
-const FINISH_GRACE = 30;          // s the race keeps going after the first finisher
-const COUNTDOWN = 3;
+export const FINISH_GRACE = 30;   // s the race keeps going after the first finisher
+export const COUNTDOWN = 3;
 
 // A whole race: cars, laps, positions and the event stream the renderer/announcer read.
 // Consumers drain race.events themselves.
@@ -71,9 +71,15 @@ function trackProgress(race, car) {
   }
 }
 
+// Seconds left before the race is called, once someone has finished (null before that).
+export function graceLeft(race) {
+  return race.firstFinishTime === null ? null : Math.max(0, FINISH_GRACE - (race.time - race.firstFinishTime));
+}
+
 // inputs[i] = {throttle, steer, fire, drop, nitro} for car i (missing = coast).
 export function stepRace(race, inputs, dt) {
   if (race.phase === 'countdown') {
+    race.cars.forEach((car, i) => { car.prevInput = inputs[i] ?? {}; }); // buttons held on the grid don't go off at GO
     const before = Math.ceil(race.countdown);
     race.countdown -= dt;
     if (Math.ceil(race.countdown) !== before && race.countdown > 0) race.events.push({ type: 'count', n: Math.ceil(race.countdown) });

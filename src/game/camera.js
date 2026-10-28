@@ -30,3 +30,15 @@ export function createCamera() {
   };
   return cam;
 }
+
+// The race-start flyover: through the countdown the camera sweeps back down the track from INTRO_FLY tiles ahead,
+// easing in, and settles on your car with a fifth of the countdown to spare. Returns something camera.update follows.
+export const INTRO_FLY = 36; // tiles
+export function introFocus(track, car, countdown, total) {
+  const u = Math.min(1, Math.max(0, (total - countdown) / (total * 0.8)));
+  const e = 1 - (1 - u) ** 3;
+  if (e >= 1) return { x: car.x, y: car.y, z: car.z, vx: 0, vy: 0 };
+  const p = track.pointAt(track.project(car.x, car.y).s + INTRO_FLY * (1 - e));
+  const k = Math.max(0, (e - 0.85) / 0.15); // the last stretch slides off the centre line onto the car itself
+  return { x: p.x + (car.x - p.x) * k, y: p.y + (car.y - p.y) * k, z: p.h + (car.z - p.h) * k, vx: 0, vy: 0 };
+}

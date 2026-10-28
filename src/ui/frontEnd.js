@@ -79,9 +79,12 @@ export function createFrontEnd(canvas, { storage = globalThis.localStorage ?? nu
     frame(dt) {
       handle(tick(s, dt));
       announcer.tick(dt);
+      s.captionOn = captionT > 0;
       drawScreen(ctx, s, assets, dt);
-      // the combo screen's loadout and GO button live at the bottom, so its captions go over the title instead
-      overlay(dt, s.screen === 'select' && s.select.step === 'combo' ? { top: 4 } : undefined);
+      // the combo screen's loadout and GO button live at the bottom, so its captions take the title's place; on the
+      // driver and ride screens they sit between the panels and the key hints
+      const sel = s.screen === 'select' ? s.select.step : null;
+      overlay(dt, sel === 'combo' ? { top: 4 } : sel ? { top: 292 } : undefined);
       const start = pending; pending = null;
       return { start, actions: actions.splice(0) };
     },

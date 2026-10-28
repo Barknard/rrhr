@@ -18,15 +18,23 @@ export function actionKeys(keys) {
 
 const CAPTURED = new Set([...UP, ...DOWN, ...LEFT, ...RIGHT, ...FIRE, ...DROP, ...NITRO, 'Tab']);
 
-// Browser-only: tracks held keys. onPress(code) fires once per key press (not on repeat).
+// Tracks held keys. onPress(code) fires once per key press (not on repeat). A key pressed and released between two
+// reads still shows as down on the next read, so a quick tap is never lost at a low frame rate.
 export function createInput(target = window, onPress = () => {}) {
-  const keys = new Set();
+  const keys = new Set(), tapped = new Set();
   target.addEventListener('keydown', e => {
-    if (CAPTURED.has(e.code)) e.preventDefault();
+    if (CAPTURED.has(e.code)) e.preventDefault?.();
     if (!e.repeat) onPress(e.code);
-    keys.add(e.code);
+    keys.add(e.code); tapped.add(e.code);
   });
   target.addEventListener('keyup', e => keys.delete(e.code));
-  target.addEventListener('blur', () => keys.clear());
-  return { keys, read: () => ({ ...combineKeys(keys), ...actionKeys(keys) }) };
+  target.addEventListener('blur', () => { keys.clear(); tapped.clear(); });
+  return {
+    keys,
+    read() {
+      const seen = new Set([...keys, ...tapped]);
+      tapped.clear();
+      return { ...combineKeys(seen), ...actionKeys(seen) };
+    },
+  };
 }
