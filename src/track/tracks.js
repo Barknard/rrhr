@@ -58,7 +58,7 @@ export const TRACKS = {
     size: 100,
     width: 5.6,
     points: [
-      [12, 10, 0], [44, 10, 0], [78, 10, 0], [88, 14, 0], [94, 22, 0], // start/finish, the mile-long straight, the first sweeper
+      [12, 10, 0], [44, 10, 0], [78, 10, 0], [92, 11, 0], [94, 22, 0], // start/finish, the mile-long straight, then a hard right: the fly-off corner
       [94, 32, 0], [86, 46, 0], [70, 56, 0], [68, 66, 0], [80, 74, 0], // the S through the infield
       [92, 80, 0], [90, 87, 0], [80, 92, 0], [70, 92, 0],              // bottom-right sweeper onto the back straight
       [62, 92, 24], [52, 92, 6],                                       // the kicker and the jump over the magma channel

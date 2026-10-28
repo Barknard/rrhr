@@ -16,7 +16,9 @@ const WALL_SCRAPE = 0.04;           // speed lost per tile/s of into-wall impact
 // Fly-offs: hit the wall hard and square enough and the car vaults it. The arc is scripted, not simulated against
 // the terrain: the car keeps its velocity, gets an upward kick, tumbles out over the edge and always ends below
 // any road, in the lava, whatever it passes over on the way. Then it counts as a fall.
-export const FLYOFF_SPEED = 5.5;    // tiles/s of into-wall speed (speed x sine of the angle to the wall)
+// FLYOFF_SPEED sits above the hardest wall hit of clean full-throttle driving (6.51, a Skimmer on Slag Pit; see
+// flyoff.test.js autopilotNeverFliesOff), so it takes an overcooked corner, a late turn-in or a shove to go over.
+export const FLYOFF_SPEED = 6.75;   // tiles/s of into-wall speed (speed x sine of the angle to the wall)
 export const FLYOFF_TIME = 0.9;     // s from the barrier to the splash
 export const FLYOFF_SINK = -30;     // px: where the arc ends, under the lava's surface and below any pit fall
 const FLYOFF_KICK = 100;            // px/s upward as the car clears the barrier (a pad launch is 38)
