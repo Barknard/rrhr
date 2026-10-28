@@ -13,7 +13,7 @@ const PAD = { reach: 0.6, vz: 38, speedMul: 1.25, cooldown: 1.5 };
 const TUMBLE = { angle: Math.cos((50 * Math.PI) / 180), keep: 0.35, dmg: 10 };
 const WEAPON_KEYS = Object.keys(WEAPONS);
 
-const alive = c => !c.wrecked && !c.fallen;
+const alive = c => !c.wrecked && !c.fallen && !c.flying; // a car flying off the track can't be hit
 
 export function rollCrate(rng) {
   const r = rng();

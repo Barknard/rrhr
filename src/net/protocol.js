@@ -20,7 +20,7 @@ export const peerIdFor = code => `rrhr-${code}`;
 // Both sides must run the same game: a guest with different car or driver numbers would mispredict all race.
 // The version is the protocol number plus a fingerprint of every number the race runs on, so a balance change
 // alone is enough to tell two builds apart.
-const PROTOCOL = 1;
+const PROTOCOL = 2; // 2: fly-offs
 const fnv = text => { let h = 0x811c9dc5; for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193); return (h >>> 0).toString(36); };
 export const NET_VERSION = `${PROTOCOL}-${fnv(JSON.stringify({ CAR_STATS, DRIVERS, SKILL }))}`;
 

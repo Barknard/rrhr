@@ -13,6 +13,15 @@ const RESPAWN_TIME = 1.5;           // s
 const RESPAWN_RUNWAY = 4;           // tiles of plain road a respawned car gets in front of it
 const WALL_BOUNCE = 0.3;            // fraction of into-wall speed returned as bounce
 const WALL_SCRAPE = 0.04;           // speed lost per tile/s of into-wall impact (capped at 30%)
+// Fly-offs: hit the wall hard and square enough and the car vaults it. The arc is scripted, not simulated against
+// the terrain: the car keeps its velocity, gets an upward kick, tumbles out over the edge and always ends below
+// any road, in the lava, whatever it passes over on the way. Then it counts as a fall.
+export const FLYOFF_SPEED = 5.5;    // tiles/s of into-wall speed (speed x sine of the angle to the wall)
+export const FLYOFF_TIME = 0.9;     // s from the barrier to the splash
+export const FLYOFF_SINK = -30;     // px: where the arc ends, under the lava's surface and below any pit fall
+const FLYOFF_KICK = 100;            // px/s upward as the car clears the barrier (a pad launch is 38)
+const FLYOFF_SPIN = 9;              // rad/s the car tumbles (drawn as a roll)
+const FLYOFF_YAW = 5;               // rad/s its nose slews round on the way
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const num = v => (Number.isFinite(v) ? v : 0);
@@ -22,7 +31,7 @@ export function createCar(key, spawn) {
     key, stats: CAR_STATS[key],
     x: spawn.x, y: spawn.y, z: spawn.h,
     vx: 0, vy: 0, vz: 0, heading: spawn.dir,
-    grounded: true, fallen: false, respawnTimer: 0,
+    grounded: true, fallen: false, respawnTimer: 0, flying: null,
   };
 }
 
@@ -33,11 +42,13 @@ function constrainToRoad(car, track) {
   const p = track.project(car.x, car.y);
   const limit = track.halfWidth - CAR_RADIUS;
   if (p.dist <= limit) return;
-  car.scrape = 0.001; // touching the wall (raised below by the into-wall speed); the renderer reads it for sparks
   const nx = (car.x - p.px) / p.dist, ny = (car.y - p.py) / p.dist;
+  const vn = car.vx * nx + car.vy * ny; // into-wall speed
+  // spider legs grip the barrier; a wreck is out of the race already
+  if (vn >= FLYOFF_SPEED && !car.stats.wallCrawler && !car.wrecked) { vault(car, nx, ny, p.s); return; }
+  car.scrape = 0.001; // touching the wall (raised below by the into-wall speed); the renderer reads it for sparks
   car.x = p.px + nx * limit;
   car.y = p.py + ny * limit;
-  const vn = car.vx * nx + car.vy * ny;
   if (vn > 0) {
     car.scrape = Math.max(car.scrape, vn);
     car.vx -= (1 + WALL_BOUNCE) * vn * nx;
@@ -47,6 +58,34 @@ function constrainToRoad(car, track) {
       car.vx *= scrape;
       car.vy *= scrape;
     }
+  }
+}
+
+// Over the barrier: the flight keeps the velocity it hit the wall with and tumbles away from the road.
+function vault(car, nx, ny, s) {
+  const turn = car.vx * ny - car.vy * nx >= 0 ? 1 : -1; // which way it rolls: the side the road falls away on
+  car.flying = { t: 0, vx: car.vx, vy: car.vy, z0: car.z, turn, spin: 0 };
+  car.flyoffS = s; // respawn from where it left the road, not from whatever road it flew over
+  car.grounded = false;
+  car.scrape = 0;
+}
+
+// The scripted arc: z(t) = z0 + KICK t - g t^2 / 2, with g chosen so it reaches FLYOFF_SINK at FLYOFF_TIME.
+function fly(car, dt) {
+  const f = car.flying, T = FLYOFF_TIME;
+  f.t = Math.min(T, f.t + dt);
+  const g = (2 * (f.z0 + FLYOFF_KICK * T - FLYOFF_SINK)) / (T * T);
+  car.vx = f.vx; car.vy = f.vy;
+  car.x += f.vx * dt; car.y += f.vy * dt;
+  car.z = f.z0 + FLYOFF_KICK * f.t - (g * f.t * f.t) / 2;
+  car.vz = FLYOFF_KICK - g * f.t;
+  car.heading += f.turn * FLYOFF_YAW * dt;
+  f.spin = f.turn * FLYOFF_SPIN * f.t;
+  car.scrape = 0;
+  if (f.t >= T - 1e-9) {
+    car.z = FLYOFF_SINK;
+    car.flying = null;
+    car.fallen = true; car.respawnTimer = RESPAWN_TIME;
   }
 }
 
@@ -61,10 +100,10 @@ export function respawn(car, track) {
     }
     return true;
   };
-  let s = track.project(car.x, car.y).s;
+  let s = car.flyoffS ?? track.project(car.x, car.y).s;
   for (let k = 0; k < 800 && !clear(s); k++) s += 0.25;
   const p = track.pointAt(s);
-  Object.assign(car, { x: p.x, y: p.y, z: p.h, vx: 0, vy: 0, vz: 0, heading: p.dir, grounded: true, fallen: false, respawnTimer: 0 });
+  Object.assign(car, { x: p.x, y: p.y, z: p.h, vx: 0, vy: 0, vz: 0, heading: p.dir, grounded: true, fallen: false, respawnTimer: 0, flying: null, flyoffS: null });
 }
 
 function substep(car, throttle, steer, dt, track) {
@@ -100,6 +139,7 @@ function substep(car, throttle, steer, dt, track) {
   car.x += car.vx * dt;
   car.y += car.vy * dt;
   constrainToRoad(car, track);
+  if (car.flying) return;
   // A face taller than STEP_HEIGHT (the far wall of a pit) can't be driven up.
   const ahead = groundAt(car.x, car.y);
   if (Number.isFinite(ahead) && ahead > car.z + STEP_HEIGHT) {
@@ -147,10 +187,11 @@ export function stepCar(car, input, dt, track) {
     if (car.respawnTimer <= 1e-9) respawn(car, track);
     return;
   }
+  if (car.flying) { fly(car, dt); return; }
   const throttle = clamp(num(input.throttle), -1, 1);
   const steer = clamp(num(input.steer), -1, 1);
   car.scrape = 0;
   const speed = Math.hypot(car.vx, car.vy);
   const n = Math.max(1, Math.ceil((speed * dt) / MAX_SUBSTEP_DIST), Math.ceil(dt * 120));
-  for (let i = 0; i < n && !car.fallen; i++) substep(car, throttle, steer, dt / n, track);
+  for (let i = 0; i < n && !car.fallen && !car.flying; i++) substep(car, throttle, steer, dt / n, track);
 }

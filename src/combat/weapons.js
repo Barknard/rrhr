@@ -16,7 +16,7 @@ const ARC = { ...BALANCE.arc, cone: Math.cos((BALANCE.arc.coneDeg * Math.PI) / 1
 const { saw: SAW, harpoon: HARPOON, mine: MINE, napalm: NAPALM } = BALANCE;
 const HIT_HEIGHT = 14; // px: projectiles pass over/under cars further apart than this
 
-const alive = c => !c.wrecked && !c.fallen;
+const alive = c => !c.wrecked && !c.fallen && !c.flying; // a car flying off the track can't be hit
 const fwd = car => [Math.cos(car.heading), Math.sin(car.heading)];
 const knockOf = c => c.stats.knockMul ?? 1;
 

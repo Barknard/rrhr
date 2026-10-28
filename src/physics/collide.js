@@ -49,7 +49,7 @@ const support = (b, dx, dy) => [
 const clamp = (v, m) => Math.max(-m, Math.min(m, v));
 
 export function collidePair(race, a, b) {
-  if (a.wrecked || b.wrecked || a.fallen || b.fallen || Math.abs(a.z - b.z) > MAX_DZ) return;
+  if (a.wrecked || b.wrecked || a.fallen || b.fallen || a.flying || b.flying || Math.abs(a.z - b.z) > MAX_DZ) return;
   const fa = footprint(a), fb = footprint(b), hit = boxOverlap(fa, fb);
   if (!hit) return;
   const { nx, ny, depth } = hit, ma = a.stats.mass, mb = b.stats.mass;

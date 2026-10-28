@@ -13,10 +13,10 @@ export const INTERP_DELAY = 0.1;  // s
 const STATE = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'heading', 'grounded'];
 
 export function createPredictor(track, stats) {
-  const sim = { stats, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, heading: 0, grounded: true, fallen: false, respawnTimer: 0, speedMul: 1, accelMul: 1 };
+  const sim = { stats, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, heading: 0, grounded: true, fallen: false, respawnTimer: 0, flying: null, speedMul: 1, accelMul: 1 };
   const pending = [], offset = { x: 0, y: 0, z: 0, heading: 0 };
   let blendLeft = 0; // s left to fade the current correction out (linearly, so it is gone after BLEND_TIME)
-  let following = true; // no prediction until the first host state, or while wrecked / in the pit
+  let following = true; // no prediction until the first host state, or while wrecked / in the pit / flying off
 
   const step = (p, dt) => stepCar(sim, { throttle: p.throttle, steer: p.steer }, dt, track);
   const shown = () => ({ x: sim.x + offset.x, y: sim.y + offset.y, z: sim.z + offset.z, heading: sim.heading + offset.heading });
@@ -38,9 +38,10 @@ export function createPredictor(track, stats) {
       while (pending.length && pending[0].seq <= ack) pending.shift();
       const before = shown();
       for (const f of STATE) sim[f] = state[f];
+      Object.assign(sim, { flying: null, flyoffS: null, fallen: false }); // the host decides falls and fly-offs; a predicted one is replayed from here
       const boosting = state.boostTimer > 0;
       sim.speedMul = boosting ? NITRO_SPEED : 1; sim.accelMul = boosting ? NITRO_ACCEL : 1;
-      if (state.wrecked || state.fallen) { following = true; pending.length = 0; Object.assign(offset, { x: 0, y: 0, z: 0, heading: 0 }); return; }
+      if (state.wrecked || state.fallen || state.flying) { following = true; pending.length = 0; Object.assign(offset, { x: 0, y: 0, z: 0, heading: 0 }); return; }
       const wasFollowing = following;
       following = false;
       for (const p of pending) step(p, p.dt);

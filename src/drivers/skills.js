@@ -8,7 +8,7 @@ export const SKILL = { THICK_HIDE: 0.35, CALCULATED: 0.3, MAMA_EVERY: 4, JACKRAB
 const { THICK_HIDE, CALCULATED, MAMA_EVERY, JACKRABBIT, OVERCHARGE, BLOODSUCKER, GREASE_DELAY, GREASE_RATE } = SKILL;
 
 const driverOf = car => car?.stats?.driver;
-const alive = car => !car.wrecked && !car.fallen;
+const alive = car => !car.wrecked && !car.fallen && !car.flying;
 const heal = (car, n) => { if (alive(car) && car.armor > 0) car.armor = Math.min(car.maxArmor, car.armor + n); };
 
 function shortFuse(race, car) { if (driverOf(car) === 'dolly') car.charges.drop += 1; }

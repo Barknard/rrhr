@@ -74,6 +74,21 @@ export function rejitter(bolt, rng) {
   bolt.branches = Array.from({ length: 1 + Math.floor(rng() * 3) }, () => ({ path: boltPath(4, rng), at: R(rng, 0.25, 0.8), dir: R(rng, -0.9, 0.9) }));
 }
 
+// A car dunked in the lava: a crown of glowing blobs thrown up and falling back, a flare of fire, popping
+// bubbles, then smoke. `delay` holds it all back until the scripted fly-off arc comes down.
+function lavaSplash(fx, x, y, rng, delay = 0) {
+  for (let k = 0; k < 22; k++) {
+    const a = R(rng, 0, 2 * Math.PI), sp = R(rng, 0.6, 2.4);
+    add(fx, { kind: 'debris', delay, glow: true, size: rng() < 0.5 ? 2 : 3, x: x + R(rng, -0.3, 0.3), y: y + R(rng, -0.3, 0.3), z: 2, floor: 0, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, vz: R(rng, 60, 120), life: R(rng, 0.6, 1.1), max: 1.1 });
+  }
+  for (let k = 0; k < 8; k++) {
+    const life = R(rng, 0.35, 0.6);
+    add(fx, { kind: 'fire', delay, x: x + R(rng, -0.4, 0.4), y: y + R(rng, -0.4, 0.4), z: R(rng, 2, 8), floor: 0, vx: R(rng, -0.6, 0.6), vy: R(rng, -0.6, 0.6), vz: R(rng, 15, 40), life, max: life, r0: R(rng, 3, 6), r1: R(rng, 8, 12) });
+  }
+  for (let k = 0; k < 6; k++) add(fx, { kind: 'bubble', delay: delay + R(rng, 0.1, 0.6), x: x + R(rng, -0.8, 0.8), y: y + R(rng, -0.8, 0.8), z: 0, vx: 0, vy: 0, vz: 0, life: 0.7 });
+  smoke(fx, x, y, 0, 6, rng, { delay: delay + 0.3, r0: 4, r1: 13, life: 2, color: 0x3a2a2a, lit: 0x7a4a3a, spread: 0.4, rise: 10 });
+}
+
 const carZ = c => zs(c.z);
 const behind = (c, d) => [c.x - Math.cos(c.heading) * d, c.y - Math.sin(c.heading) * d];
 
@@ -106,6 +121,11 @@ export function absorbEvents(fx, events, rng = Math.random) {
         smoke(fx, e.car.x, e.car.y, carZ(e.car), 8, rng, { r0: 3, r1: 10, life: 1.2, color: 0x6a6070, lit: 0x8a8090, rise: 6 });
         sparks(fx, e.car.x, e.car.y, carZ(e.car), 12, rng, { speed: 3 });
         fx.shake = Math.max(fx.shake, 5);
+        break;
+      case 'flyoff': // through the barrier in a shower of sparks; the splash waits for the arc to come down
+        sparks(fx, e.x, e.y, zs(e.z), 18, rng, { speed: 5, up: 60 });
+        fx.shake = Math.max(fx.shake, 4);
+        lavaSplash(fx, e.landX, e.landY, rng, Math.max(0, e.delay ?? 0));
         break;
       case 'bump':
         if (e.impact > 4) { sparks(fx, (e.a.x + e.b.x) / 2, (e.a.y + e.b.y) / 2, carZ(e.a), 10, rng, { speed: 3 }); fx.shake = Math.max(fx.shake, 3); }

@@ -1,4 +1,4 @@
-import { respawn } from '../physics/carPhysics.js';
+import { respawn, FLYOFF_TIME } from '../physics/carPhysics.js';
 
 export const WRECK_TIME = 1.5;       // s out of the race after being blown up
 export const NITRO_TIME = 1.2;       // s per nitro charge
@@ -14,7 +14,7 @@ export function initCombatCar(car) {
   Object.assign(car, {
     maxArmor: car.stats.armor, armor: car.stats.armor, wrecked: false, wreckTimer: 0,
     charges: { ...CHARGES }, nitro: NITRO_MAX, boostTimer: 0, catchupTimer: 0,
-    lastHitBy: null, lastHitTime: -99, wasFallen: false,
+    lastHitBy: null, lastHitTime: -99, wasFallen: false, wasFlying: false,
   });
 }
 
@@ -33,7 +33,7 @@ function wreck(race, car, attacker, cause) {
 export const SPAWN_SAFE = 1.5; // s
 
 export function applyDamage(race, victim, amount, attacker, cause) {
-  if (victim.wrecked || victim.fallen || amount <= 0 || race.time < (victim.safeUntil ?? -1)) return;
+  if (victim.wrecked || victim.fallen || victim.flying || amount <= 0 || race.time < (victim.safeUntil ?? -1)) return;
   victim.armor -= amount;
   if (attacker && attacker !== victim) { victim.lastHitBy = attacker; victim.lastHitTime = race.time; }
   if (amount >= 1) race.events.push({ type: 'hit', car: victim, attacker, amount, cause });
@@ -45,7 +45,7 @@ export function refillOnLap(race, car) {
   car.nitro = NITRO_MAX;
 }
 
-// Race system: wreck timers, nitro, catch-up, pit-fall kill credit.
+// Race system: wreck timers, nitro, catch-up, pit-fall kill credit, fly-offs.
 export const combatSystem = {
   before(race, inputs, dt) {
     const leader = Math.max(...race.cars.map(c => c.dist));
@@ -62,7 +62,7 @@ export const combatSystem = {
         return;
       }
       const input = inputs[i] ?? {};
-      if (input.nitro && !car.prevInput.nitro && car.nitro >= 1 && car.boostTimer <= 0 && !car.fallen) {
+      if (input.nitro && !car.prevInput.nitro && car.nitro >= 1 && car.boostTimer <= 0 && !car.fallen && !car.flying) {
         car.nitro--;
         car.boostTimer = NITRO_TIME * (1 + (car.stats.nitroBoost ?? 0));
         race.events.push({ type: 'nitro', car });
@@ -82,10 +82,16 @@ export const combatSystem = {
   },
   after(race) {
     for (const car of race.cars) {
+      if (car.flying && !car.wasFlying) {
+        // the arc is scripted, so where it comes down (and when) is known now: the effects splash it there
+        const left = FLYOFF_TIME - car.flying.t;
+        race.events.push({ type: 'flyoff', car, x: car.x, y: car.y, z: car.z, landX: car.x + car.flying.vx * left, landY: car.y + car.flying.vy * left, delay: left });
+      }
+      car.wasFlying = !!car.flying;
       if (car.fallen && !car.wasFallen) {
         const by = race.time - car.lastHitTime < KILL_CREDIT_WINDOW ? car.lastHitBy : null;
         if (by) by.kills++;
-        race.events.push({ type: 'fell', car, attacker: by });
+        race.events.push(car.flyoffS == null ? { type: 'fell', car, attacker: by } : { type: 'fell', car, attacker: by, flyoff: true });
       }
       if (car.wasFallen && !car.fallen) car.safeUntil = race.time + SPAWN_SAFE; // climbed out of the pit
       car.wasFallen = car.fallen;

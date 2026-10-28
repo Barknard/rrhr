@@ -13,7 +13,8 @@ const validEntrant = e => e && typeof e === 'object' && CAR_KEYS.includes(e.key)
 const validStart = m => Array.isArray(m.entrants) && m.entrants.length >= 1 && m.entrants.length <= 4 && m.entrants.every(validEntrant)
   && Number.isInteger(m.seat) && m.seat >= -1 && m.seat < m.entrants.length && Number.isInteger(m.laps) && m.laps >= 1 && m.laps <= 20;
 const validCar = c => c && Number.isFinite(c.x) && Number.isFinite(c.y) && c.charges && typeof c.charges === 'object'
-  && FORWARD.includes(c.loadout?.forward) && DROP.includes(c.loadout?.drop);
+  && FORWARD.includes(c.loadout?.forward) && DROP.includes(c.loadout?.drop)
+  && (c.fly === undefined || (c.fly && Number.isFinite(c.fly.t) && Number.isFinite(c.fly.spin)));
 // every { car: id } inside events and entities must name a car that exists, or the effects code would trip on it
 const refsOk = (v, n, depth = 0) => {
   if (depth > 8) return false;
@@ -123,7 +124,7 @@ export function createGuestSession({ peer, track, playerId, name, clock = realCl
         g.lastSnap = { time: s.time, at: clock.now };
         if (g.seat >= 0) {
           const c = s.cars[g.seat];
-          g.predictor.reconcile({ x: c.x, y: c.y, z: c.z, vx: c.vx, vy: c.vy, vz: c.vz, heading: c.h, grounded: c.g, fallen: c.f, wrecked: c.w, boostTimer: c.boost }, msg.ack);
+          g.predictor.reconcile({ x: c.x, y: c.y, z: c.z, vx: c.vx, vy: c.vy, vz: c.vz, heading: c.h, grounded: c.g, fallen: c.f, flying: !!c.fly, wrecked: c.w, boostTimer: c.boost }, msg.ack);
         }
         if (Array.isArray(msg.captions)) g.captions.push(...msg.captions.filter(c => typeof c === 'string').map(c => c.slice(0, 300)));
         place();

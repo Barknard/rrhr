@@ -4,7 +4,8 @@ import { CAR_STATS } from './cars/carStats.js';
 import { RIGS } from './cars/rigs/index.js';
 import { bakeRig } from './cars/rigs/rig.js';
 import { createAnim, stepAnim } from './cars/anim.js';
-import { bakeWorld, KIND, withToLayer } from './render/world/bakeWorld.js';
+import { bakeWorld, KIND } from './render/world/bakeWorld.js';
+import { createWorldCache, workerBake } from './game/worlds.js';
 import { resetStamps } from './render/world/composite.js';
 import { drawScene, bakeSceneSprites, STACK_TOP } from './render/scene.js';
 import { createVehicleDrawer } from './render/vehicleDraw.js';
@@ -48,8 +49,9 @@ function loading(msg) {
 }
 const nextFrame = () => new Promise(r => setTimeout(r, 30)); // let the loading text paint before heavy baking
 
-const track = buildTrack(TRACKS.slagPit);
-const minimap = createMinimap(track, { w: 120, h: 76 });
+const QUICK_TRACK = 'slagPit'; // the quick race and online play stay on Slag Pit
+const slagPit = buildTrack(TRACKS[QUICK_TRACK]);
+let track = slagPit, minimap = createMinimap(track, { w: 120, h: 76 }); // set per race by startScene
 let world, sprites, vdraw, frame;
 let loadout = { forward: 'arc', drop: 'mine' };
 let race = null, player, camera, fx, vehicles = [], banner = null, bannerTimer = 0, t = 0;
@@ -58,21 +60,23 @@ const pick = arr => arr[(Math.random() * arr.length) | 0];
 const fe = createFrontEnd(screen, { onLeave: () => { location.href = 'about:blank'; } });
 // Online: net is null offline, else { role: 'host' | 'guest', session, code }. The race being drawn is the host's
 // real race, or a guest's view of it (shaped the same, so everything below draws either).
-const online = createOnline({ track, playerId: playerIdFrom(globalThis.localStorage) });
+const online = createOnline({ track: slagPit, playerId: playerIdFrom(globalThis.localStorage) });
 let net = null, joinToken = 0, hostLeftAt = null, opening = false;
 let pendingJoin = (location.hash.match(/join=([A-Za-z]{4})/) ?? [])[1]?.toUpperCase() ?? null; // a shared #join=CODE link
 
-// The track's world takes seconds to bake. It starts now, in a worker, so it is usually ready long before the
-// first race while the menus keep animating; without workers it is baked here when the first race needs it.
-const worldBake = new Promise((resolve, reject) => {
-  try {
-    const worker = new Worker(new URL('./render/world/worldWorker.js', import.meta.url), { type: 'module' });
-    worker.onmessage = e => { resolve(withToLayer(e.data)); worker.terminate(); };
-    worker.onerror = err => { worker.terminate(); reject(err); };
-    worker.postMessage({ track: 'slagPit' });
-  } catch (err) { reject(err); }
+// A track's world takes seconds to bake, in a worker. Slag Pit starts now so it is usually ready long before the
+// first race while the menus keep animating; other tracks bake when a race (or the series) asks for them.
+// No workers: bake on this thread, once (the cache keeps the result).
+const worlds = createWorldCache({
+  bake: workerBake,
+  fallback: async key => {
+    const t = buildTrack(TRACKS[key]);
+    loading(`BUILDING ${t.def.name.toUpperCase()}`);
+    await nextFrame();
+    return bakeWorld(t);
+  },
 });
-worldBake.catch(() => {}); // ensureWorld falls back
+worlds.prefetch(QUICK_TRACK);
 
 // While the world finishes baking: a "get ready" card that keeps moving (the bake no longer blocks the page).
 let loadT = 0;
@@ -87,13 +91,9 @@ function drawLoadingCard(dt) {
   drawText(ctx, `WARMING UP THE LAVA${dots}`, ((VIEW_W - textWidth('WARMING UP THE LAVA...')) / 2) | 0, 202, '#a99fb8');
 }
 
-async function ensureWorld() {
-  if (world) return;
-  try { world = await worldBake; } catch {
-    loading('BUILDING SLAG PIT SPEEDWAY');
-    await nextFrame();
-    world = bakeWorld(track);
-  }
+async function ensureWorld(key) {
+  world = await worlds.get(key);
+  if (sprites) return;
   sprites = bakeSceneSprites();
   vdraw = createVehicleDrawer();
   const img = ctx.createImageData(VIEW_W, VIEW_H);
@@ -101,22 +101,25 @@ async function ensureWorld() {
 }
 
 // combos: [{ driver, vehicle }], yours first. R reuses the same four.
-async function newRace(next = combos) {
+async function newRace(next = combos, key = QUICK_TRACK) {
   combos = next;
   if (combos[0].loadout) loadout = { ...combos[0].loadout }; // the weapons picked on the combo screen
   const entrants = combos.map(({ driver, vehicle }, i) => ({
     key: vehicle, driver, name: DRIVERS[driver].short.toUpperCase(), human: i === 0, color: CAR_STATS[vehicle].color,
     loadout: i ? { forward: pick(FORWARD), drop: pick(DROP) } : { ...loadout },
   }));
-  await startScene(createRace({ track, entrants, laps: LAPS, seed: (Math.random() * 1e9) | 0 }), 0);
+  const trk = buildTrack(TRACKS[key]);
+  await startScene(createRace({ track: trk, entrants, laps: LAPS, seed: (Math.random() * 1e9) | 0 }), 0, key, trk);
 }
 
 // Everything a race needs on screen, for a local race, the host's race or a guest's view of it.
-// mySeat: which car is yours (a guest who is only watching follows car 0).
-async function startScene(raceObj, mySeat) {
+// mySeat: which car is yours (a guest who is only watching follows car 0). key: which track's world to draw on.
+async function startScene(raceObj, mySeat, key = QUICK_TRACK, trk = key === QUICK_TRACK ? slagPit : buildTrack(TRACKS[key])) {
   mode = 'loading';
   fe.suspend();
-  await ensureWorld();
+  track = trk;
+  minimap = createMinimap(track, { w: 120, h: 76 });
+  await ensureWorld(key);
   resetStamps(world);
   const keys = raceObj.cars.map(c => c.key);
   if (keys.some(k => !RIGS[k].baked)) { loading(`LOADING ${keys.map(k => CAR_STATS[k].name).join(' - ')}`); await nextFrame(); }
@@ -197,7 +200,8 @@ function narrate(events) {
     if (e.type === 'empty' && e.car === player) { flash(e.slot === 'forward' ? 'OUT OF AMMO - REFILLS NEXT LAP' : 'NO DROPS LEFT - REFILLS NEXT LAP', 1.2); continue; }
     if (e.type === 'wreck' && e.car === player) flash(e.attacker ? `WRECKED BY ${e.attacker.name}!` : 'YOU BLEW UP!');
     else if (e.type === 'wreck' && e.attacker === player) flash(`YOU WRECKED ${e.car.name}!`);
-    else if (e.type === 'fell' && e.car === player) flash('INTO THE PIT!');
+    else if (e.type === 'flyoff' && e.car === player) flash('OVER THE WALL!');
+    else if (e.type === 'fell' && e.car === player) flash(e.flyoff ? 'INTO THE LAVA!' : 'INTO THE PIT!');
     else if (e.type === 'lap' && e.car === player && e.lap < race.laps) flash(e.lap === race.laps - 1 ? 'FINAL LAP!' : `LAP ${e.lap + 1}`);
     else if (e.type === 'pickup' && e.car === player) {
       const c = e.content;
@@ -242,7 +246,7 @@ function update(dt) {
   for (const v of vehicles) {
     stepAnim(v.anim, v.car, dt, v.rig.stride ?? 1);
     v.anim.aim = aimOf(v.car);
-    if (!v.car.wrecked && !v.car.fallen) emitVehicle(fx, v.car, v.anim, v.rig, dt);
+    if (!v.car.wrecked && !v.car.fallen && !v.car.flying) emitVehicle(fx, v.car, v.anim, v.rig, dt);
   }
   // embers and bubbles over a few random lava pixels on screen; smoke from the stacks
   const tl = viewTopLeft(), lava = [];
@@ -375,7 +379,7 @@ window.addEventListener('pagehide', () => net?.session.close());
 
 // Debug handle for the browser console and automated play-tests: on localhost, or anywhere with ?debug.
 if (location.hostname === 'localhost' || new URLSearchParams(location.search).has('debug')) window.rrhr = {
-  get race() { return race; }, get player() { return player; }, get world() { return world; }, track, input,
+  get race() { return race; }, get player() { return player; }, get world() { return world; }, get track() { return track; }, input,
   get mode() { return mode; }, fe, get net() { return net; }, online,
   render: () => render(), update: dt => update(dt ?? STEP), newRace, frameStep: dt => frameStep(dt ?? STEP),
 };

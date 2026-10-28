@@ -124,7 +124,9 @@ export function createAnnouncer({ lines = LINES, triggers = TRIGGERS, rng = Math
           track.killedBy.set(e.car, k);
           break;
         }
+        case 'flyoff': add('flyoff', { name: who }); break;
         case 'fell':
+          if (e.flyoff && !e.attacker) break; // the fly-off already got its line
           if (e.attacker) add('fell_pushed', { killer: name(e.attacker), victim: who });
           else add('fell', { name: who });
           break;
@@ -179,7 +181,7 @@ export function createAnnouncer({ lines = LINES, triggers = TRIGGERS, rng = Math
 
       const humans = race.cars.filter(c => c.human);
       for (const c of humans) {
-        const s = carState(c), idx = order.indexOf(c), out = c.wrecked || c.fallen || c.finished;
+        const s = carState(c), idx = order.indexOf(c), out = c.wrecked || c.fallen || c.flying || c.finished;
         if (idx === order.length - 1 && order.length > 1) { s.last += dt; s.wasLastAt = t; } else s.last = 0;
         if (s.last >= LAST_PLACE_AFTER) { s.last = 0; add('last_place', { name: name(c) }); }
         if (idx <= 1 && t - s.wasLastAt < COMEBACK_WINDOW && s.wasLastAt > 0 && order.length > 2) { s.wasLastAt = -1e9; add('comeback', { name: name(c) }); }

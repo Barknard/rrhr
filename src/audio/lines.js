@@ -235,6 +235,24 @@ export const LINES = {
     "[excited] That's {killer} feeding {victim} to the volcano! The gods are pleased!",
     "[mischievously] {killer} bumps {victim} into the pit! That's what we call a hot hand-off!"
   ],
+  "flyoff": [
+    "[shouting] {name} goes OVER THE WALL! [laughs] Somebody tell them the track was the flat part!",
+    "[excited] {name} is airborne! [laughs] And in about one second, {name} is soup!",
+    "[dramatically] Ladies and gentlemen, {name} has left the building. And the track. And the earth's crust!",
+    "[shouting] LIFTOFF! {name} clears the barrier with room to spare! [snorts] Too bad the landing zone is a volcano!",
+    "[sarcastic] Oh good, {name} found the shortcut. [laughs] It's called the lava.",
+    "[deadpan] {name} hit that wall at the perfect angle. For dying.",
+    "[laughs] Look at {name} spin! Ten out of ten on the dive, zero out of ten on the landing!",
+    "[excited] {name} is FLYING! [laughs harder] Flying straight into a new career as molten metal!",
+    "[sighs] {name} tried to turn. The car had other plans. The car always has other plans.",
+    "[shouting] Up, up and AWAY! {name} has achieved liftoff! [chuckles] And now, splashdown!",
+    "[mischievously] {name} asked for a window seat over the magma. Wish granted!",
+    "[surprised] Did {name} just jump the wall? [laughs] Somebody check that driver's license! Actually, don't. It melted.",
+    "[dramatically] And {name} takes flight like a majestic eagle. [snorts] A majestic eagle made of scrap!",
+    "[groans] {name}, the brake is the OTHER pedal! [laughs] Enjoy the hot tub!",
+    "[impressed] Now THAT is hang time! {name} is getting serious air! [chuckles] Serious, final air.",
+    "[chuckles] Hey {name}, the wall was there to HELP you!"
+  ],
   "multi_kill": [
     "[shouting] DOUBLE KILL! {killer} is a one-person apocalypse!",
     "[shouting] Two for one! {killer} is having a fire sale!",
@@ -794,6 +812,11 @@ export const TRIGGERS = {
   },
   "fell_pushed": {
     "priority": 4,
+    "chance": 1,
+    "cooldown": 0
+  },
+  "flyoff": {
+    "priority": 5,
     "chance": 1,
     "cooldown": 0
   },

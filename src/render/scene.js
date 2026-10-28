@@ -3,6 +3,7 @@ import { composite, stamp } from './world/composite.js';
 import { drawFx, drawDisc, pixelLine } from './fx/drawFx.js';
 import { bakeModel } from './voxel/bake.js';
 import { framesToCanvases } from './vehicleDraw.js';
+import { FLYOFF_TIME, FLYOFF_SINK } from '../physics/carPhysics.js';
 import { stackModel, beaconModel, crateModel, mineModel, flatSawModel, STACK_TOP, BEACON_TOP } from './props.js';
 
 // Draws a whole frame of the race in HD: the animated world, road stamps, launch pads, ground effects,
@@ -33,6 +34,15 @@ function shadow() {
   }
   return (shadowCanvas = c);
 }
+
+// A car flying off the track tumbles (rolls by its spin) and swells toward the camera at the top of the arc,
+// then shrinks as it sinks into the lava; once it is under, only the splash shows.
+function tumbleOf(car) {
+  if (!car.flying) return null;
+  const k = Math.min(1, car.flying.t / FLYOFF_TIME), sink = Math.max(0.3, Math.min(1, 1 + (car.z ?? 0) / 12));
+  return { spin: car.flying.spin, scale: (1 + 0.35 * Math.sin(Math.PI * k)) * sink };
+}
+const sunk = car => (car.flying ? car.z < -8 : car.fallen && car.z <= FLYOFF_SINK + 1);
 
 const blit = (ctx, s, x, y) => ctx.drawImage(s.canvas, Math.round(x) - s.ox, Math.round(y) - s.oy);
 
@@ -134,12 +144,12 @@ export function drawScene(ctx, s) {
   const onScreen = (gx, gy, zPx) => { const [x, y] = view(gx, gy, zPx); return x > -112 && x < s.viewW + 112 && y > -112 && y < s.viewH + 112; };
   for (const v of s.vehicles) {
     const { car, rig, baked, anim } = v;
-    if (car.wrecked) continue;
+    if (car.wrecked || sunk(car)) continue;
     if (onScreen(car.x, car.y, car.z * Z_SCALE)) add(car.x, car.y, () => {
       const g = race.track.groundAt(car.x, car.y);
       if (Number.isFinite(g) && !car.fallen) { const [sx, sy] = view(car.x, car.y, g * Z_SCALE); ctx.drawImage(shadow(), Math.round(sx) - 28, Math.round(sy) - 12); }
       const [x, y] = view(car.x, car.y, car.z * Z_SCALE);
-      vdraw.blit(ctx, baked, rig.pose(anim, car, t), car.heading, x, y);
+      vdraw.blit(ctx, baked, rig.pose(anim, car, t), car.heading, x, y, tumbleOf(car));
       if (car.bomb) {
         const [bx, by] = view(car.x, car.y, car.z * Z_SCALE + 44);
         drawDisc(ctx, bx, by, 4, 16, 0x16141c, 0x4a4652);

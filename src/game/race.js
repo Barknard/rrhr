@@ -96,7 +96,7 @@ export function stepRace(race, inputs, dt) {
     car.prevInput = input;
   });
   collideCars(race);
-  for (const car of race.cars) if (!car.wrecked && !car.fallen) trackProgress(race, car);
+  for (const car of race.cars) if (!car.wrecked && !car.fallen && !car.flying) trackProgress(race, car); // a fly-off's arc crosses other roads
   for (const sys of race.systems) sys.after?.(race, inputs, dt);
 
   if (race.phase === 'racing') {

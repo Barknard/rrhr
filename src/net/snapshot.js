@@ -20,6 +20,7 @@ function carState(c) {
     scrape: r2(c.scrape ?? 0), launched: !!c.launched, input: { throttle: c.prevInput?.throttle ?? 0, steer: c.prevInput?.steer ?? 0 },
     trailers: c.trailers?.map(t => ({ x: r3(t.x), y: r3(t.y), z: r2(t.z), heading: r3(t.heading) })),
     ball: c.ball ? { x: r3(c.ball.x), y: r3(c.ball.y), z: r2(c.ball.z), angle: r3(c.ball.angle) } : undefined,
+    fly: c.flying ? { t: r3(c.flying.t), spin: r3(c.flying.spin) } : undefined, // only while flying off the track
   });
 }
 
@@ -67,7 +68,7 @@ export function createRaceView(track, entrants) {
     cars: entrants.map((e, id) => ({
       id, key: e.key, name: e.name ?? e.key.toUpperCase(), color: e.color, human: !!e.human,
       stats: e.driver ? combineStats(CAR_STATS[e.key], e.driver) : CAR_STATS[e.key],
-      x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, heading: 0, grounded: true, fallen: false, wrecked: false, finished: false, finishTime: null,
+      x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, heading: 0, grounded: true, fallen: false, flying: null, wrecked: false, finished: false, finishTime: null,
       armor: 0, maxArmor: 0, lap: 0, dist: 0, kills: 0, charges: { forward: 0, drop: 0 }, nitro: 0, boostTimer: 0,
       loadout: { ...e.loadout }, bonus: null, bomb: null, scrape: 0, launched: false, prevInput: { throttle: 0, steer: 0 },
     })),
@@ -87,6 +88,7 @@ export function applySnapshot(view, snap) {
       charges: s.charges, nitro: s.nitro, boostTimer: s.boost, loadout: s.loadout, bonus: s.bonus, bomb: s.bomb,
       scrape: s.scrape, launched: s.launched, prevInput: s.input,
     });
+    c.flying = s.fly && Number.isFinite(s.fly.t) && Number.isFinite(s.fly.spin) ? { t: s.fly.t, spin: s.fly.spin } : null;
     if (s.trailers) c.trailers = s.trailers;
     if (s.ball) c.ball = { ...(c.ball ?? {}), ...s.ball };
   });

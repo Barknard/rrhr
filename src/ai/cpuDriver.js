@@ -1,4 +1,5 @@
 import { WEAPONS } from '../combat/weapons.js';
+import { FLYOFF_SPEED } from '../physics/carPhysics.js';
 
 // Computer drivers: follow a racing line in their own lane, brake for sharp corners,
 // shoot at cars ahead, drop on cars behind, use nitro on straights, back out when stuck.
@@ -6,10 +7,30 @@ import { WEAPONS } from '../combat/weapons.js';
 const FIRE_RANGE = { arc: 6.5, saw: 10, harpoon: 8.5 };
 const FIRE_CONE = { arc: Math.cos(0.45), saw: Math.cos(0.22), harpoon: Math.cos(0.2) };
 const DROP_RANGE = 3.2;
+const FLYOFF_CAUTION = 0.8; // brake when the predicted into-wall speed at the next corner passes this share of FLYOFF_SPEED
+const CPU_BRAKE = 0.6;      // the share of the brakes a CPU uses for corners
+const TURN_CREDIT = 0.5;    // share of its turn rate a car is counted on to have turned by the time it gets there
 
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const alive = c => !c.wrecked && !c.fallen;
+
+// Fly-offs: scan the road ahead for a corner that, met at today's speed and direction, would hit the wall at
+// more than FLYOFF_CAUTION x FLYOFF_SPEED, and say whether it's time to brake for it (the corner is about as
+// close as the distance it takes to slow to a safe speed, plus a moment to react).
+function overcooked(track, car, s, sp) {
+  const limit = FLYOFF_CAUTION * FLYOFF_SPEED;
+  if (sp <= limit) return false;
+  const decel = car.stats.brake * CPU_BRAKE, heading = Math.atan2(car.vy, car.vx);
+  const room = v => (sp * sp - v * v) / (2 * decel) + sp * 0.15 + 1; // tiles to slow to v, plus a moment to react
+  for (let d = 1; d <= room(limit); d++) {
+    // how far the road there points away from where the car is going, less what it will have turned by then
+    const off = Math.min(Math.PI / 2, Math.max(0, Math.abs(wrap(track.pointAt(s + d).dir - heading)) - TURN_CREDIT * car.stats.turnRate * d / sp));
+    const safe = limit / Math.max(Math.sin(off), 1e-3); // the speed that meets that wall at `limit`
+    if (sp > safe && d <= room(safe)) return true;
+  }
+  return false;
+}
+const alive = c => !c.wrecked && !c.fallen && !c.flying; // a car flying off the track can't be hit
 
 function brain(race, car) {
   if (!car.ai) {
@@ -59,6 +80,7 @@ export function cpuInput(race, car, dt) {
   if (bend > 1.5 && sp > max * 0.6) out.throttle = -0.6;
   else if (bend > 0.9 && sp > max * 0.75) out.throttle = 0;
   if (Math.abs(err) > 1.3 && sp > 2) out.throttle = Math.min(out.throttle, 0.3);
+  if (car.grounded && overcooked(track, car, p.s, sp)) out.throttle = -CPU_BRAKE;
 
   // unstick: back up with opposite lock for a moment
   if (car.grounded && sp < 0.8) ai.stuck += dt; else ai.stuck = 0;

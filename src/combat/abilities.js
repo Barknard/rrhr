@@ -10,7 +10,7 @@ const NOSE_CONE = Math.cos((50 * Math.PI) / 180);
 export const BALL = { chain: 1.4, r: 0.2, dmg: 10, shove: 2.5, cooldown: 1, maxSwing: 1.4 };
 export const TRAILER = { gap: 1.0, count: 2, r: 0.45, shove: 3, grace: 1.5 }; // grace: no shoves while leaving the grid
 
-const alive = c => !c.wrecked && !c.fallen;
+const alive = c => !c.wrecked && !c.fallen && !c.flying; // a car flying off the track can't be hit
 
 // Registered in race.onBump: a rammer deals impact × ram damage to whoever it hits (impact = closing
 // speed in tiles/s), once per pair per cooldown.
