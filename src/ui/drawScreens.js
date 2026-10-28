@@ -4,7 +4,8 @@ import { drawIcon, WEAPON_INFO } from './icons.js';
 import { WEAPONS } from '../combat/weapons.js';
 import { DRIVERS, DRIVER_KEYS, statBars } from '../drivers/drivers.js';
 import { CAR_STATS, CLASSES } from '../cars/carStats.js';
-import { pinupCanvas, pinupFrame, pinupShimmy, shimmyOffset, PINUP_GROUND } from './pinup.js';
+import { pinupCanvas, pinupFrame, pinupShimmy, shimmyOffset, pinupMotion, PINUP_GROUND } from './pinup.js';
+import { artRows } from './pinupArt.js';
 
 // Draws whichever front-end screen is active, at 640x360. assets: { lava, showcase, portrait(key, frame) }.
 const W = 640, H = 360;
@@ -39,7 +40,24 @@ function flameText(ctx, str, cx, y, scale, t) {
 export const GATE_TEXT = ['STRONG LANGUAGE.', 'CRUDE SEXUAL HUMOR.', 'BRUTAL INSULTS.', 'CARTOON VIOLENCE.', '', 'NOT FOR KIDS.', 'NOT EVEN A LITTLE.'];
 export const GATE_PROMPT = ['PRESS ENTER OR CLICK', 'IF YOU ARE A GROWN-ASS ADULT'];
 
-function drawGate(ctx, s) {
+// Imported HD art (assets/pinup): fitted to the gate's height (a little taller, so her hops never show its bottom
+// edge), moved row by row with the painted girl's motion. Pose images, if given, stand in for those moments;
+// without a tease image she fidgets instead.
+const ART_H = 328;
+function drawPinupArt(ctx, art, t) {
+  const m = pinupMotion(t), img = art.poseImgs[m.pose] ?? art.img;
+  const scale = ART_H / img.height, w = Math.round(img.width * scale), x0 = 140 - (w >> 1), y0 = H - 320 + m.body;
+  const rows = artRows(ART_H, art.chest, m);
+  const fidget = m.pose === 'tease' && !art.poseImgs.tease ? (Math.floor(t * 16) % 2 ? 1 : -1) : 0;
+  ctx.imageSmoothingEnabled = !art.pixelated;
+  for (let y = 0; y < ART_H; y++) { // each screen row shows the source row dy above it: content shifts, nothing tears
+    const sy = Math.max(0, Math.min(ART_H - 1, y - rows.dy[y])) / scale;
+    ctx.drawImage(img, 0, sy, img.width, 1 / scale, x0 + rows.dx[y] + fidget, y0 + y, w, 1);
+  }
+  ctx.imageSmoothingEnabled = false;
+}
+
+function drawGate(ctx, s, a = {}) {
   ctx.fillStyle = '#060406'; ctx.fillRect(0, 0, W, H);
   for (let r = 150; r > 0; r -= 10) { // a smoky spotlight behind her
     ctx.fillStyle = `rgba(${120 + r / 3 | 0},20,${50 + r / 4 | 0},0.07)`;
@@ -47,12 +65,15 @@ function drawGate(ctx, s) {
   }
   ctx.fillStyle = '#7a0c12';
   for (let i = 0; i < W; i += 24) { ctx.fillRect(i, 0, 12, 6); ctx.fillRect(i + 12, H - 6, 12, 6); } // hazard edges
-  const pin = pinupCanvas(pinupFrame(s.t)); // painted at full detail: drawn 1:1, cut at mid-thigh by the bottom of the screen
-  const px = Math.round(140 - pin.canvas.width / 2), py = H - PINUP_GROUND, sh = pinupShimmy(s.t);
-  ctx.imageSmoothingEnabled = false;
-  if (!sh.s && !sh.lag) ctx.drawImage(pin.canvas, px, py);
-  else for (let y = 0; y < pin.canvas.height; y++) { // the shimmy: each row slides its own way
-    ctx.drawImage(pin.canvas, 0, y, pin.canvas.width, 1, px + shimmyOffset(y, sh.s, sh.lag), py + y, pin.canvas.width, 1);
+  if (a.pinupArt) drawPinupArt(ctx, a.pinupArt, s.t);
+  else {
+    const pin = pinupCanvas(pinupFrame(s.t)); // painted at full detail: drawn 1:1, cut at mid-thigh by the bottom of the screen
+    const px = Math.round(140 - pin.canvas.width / 2), py = H - PINUP_GROUND, sh = pinupShimmy(s.t);
+    ctx.imageSmoothingEnabled = false;
+    if (!sh.s && !sh.lag) ctx.drawImage(pin.canvas, px, py);
+    else for (let y = 0; y < pin.canvas.height; y++) { // the shimmy: each row slides its own way
+      ctx.drawImage(pin.canvas, 0, y, pin.canvas.width, 1, px + shimmyOffset(y, sh.s, sh.lag), py + y, pin.canvas.width, 1);
+    }
   }
 
   const cx = 450;
@@ -346,7 +367,7 @@ function drawLobby(ctx, s, a) {
 }
 
 export function drawScreen(ctx, s, assets, dt = 1 / 60) {
-  if (s.screen === 'gate') drawGate(ctx, s);
+  if (s.screen === 'gate') drawGate(ctx, s, assets);
   else if (s.screen === 'title') drawTitle(ctx, s, assets);
   else if (s.screen === 'options') drawOptions(ctx, s, assets);
   else if (s.screen === 'name') drawName(ctx, s, assets);

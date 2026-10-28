@@ -88,6 +88,14 @@ const JIGGLE = lerpTable([[0, 0], [130, 0], [150, 5], [175, 5], [192, 0], [320, 
 export function shimmyOffset(y, s, lag) {
   return Math.round(SWAY(y) * s + JIGGLE(y) * lag);
 }
+export const shimmySway = y => SWAY(y); // the body's part of it, for imported art (which brings its own chest band)
+
+// Everything about her motion at time t, for drawing her from an imported image instead of painting her:
+// which pose, how high she is (body), how far her chest trails (bust), and the shimmy.
+export function pinupMotion(t) {
+  const frame = pinupFrame(t), f = FRAMES[frame];
+  return { frame, pose: f.pose, body: f.body ?? 0, bust: f.bust ?? 0, shimmy: pinupShimmy(t) };
+}
 
 // ---- the painter ----
 // Every shape gets a part id; where a front part meets a different part behind it, its edge pixels become line

@@ -1,5 +1,6 @@
 import { createScreens, input, tick, typeChar, backspace } from './screens.js';
 import { drawScreen, drawCaption } from './drawScreens.js';
+import { loadPinupArt } from './pinupArt.js';
 import { createLavaBackdrop } from './lavaBackdrop.js';
 import { createShowcase, portraitCanvas } from './showcase.js';
 import { createAnnouncer } from '../audio/announcer.js';
@@ -25,7 +26,8 @@ export function createFrontEnd(canvas, { storage = globalThis.localStorage ?? nu
   try { savedName = storage?.getItem(NAME_KEY) ?? ''; } catch { /* no storage */ }
   const s = createScreens({ settings, playerName: savedName });
   const actions = [];
-  const assets = { lava: createLavaBackdrop(), showcase: createShowcase(), portrait: portraitCanvas };
+  const assets = { lava: createLavaBackdrop(), showcase: createShowcase(), portrait: portraitCanvas, pinupArt: null };
+  loadPinupArt().then(art => { assets.pinupArt = art; }); // imported HD art, if there is any
   let caption = null, captionT = 0, pending = null;
 
   // Show a line long enough to read it; the announcer won't cut in with something less important meanwhile.
