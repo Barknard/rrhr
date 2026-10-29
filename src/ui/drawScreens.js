@@ -6,8 +6,7 @@ import { WEAPONS } from '../combat/weapons.js';
 import { statBars } from '../drivers/drivers.js';
 import { CLASSES } from '../cars/carStats.js';
 import { driverDef, vehicleStats } from '../series/bosses.js';
-import { pinupCanvas, pinupFrame, pinupShimmy, shimmyOffset, pinupMotion, PINUP_GROUND } from './pinup.js';
-import { artRows } from './pinupArt.js';
+import { softKeys } from './softKeyboard.js';
 
 // Draws whichever front-end screen is active, at 640x360. assets: { lava, showcase, portrait(key, frame), hits? }.
 // Each screen registers its clickable rectangles in assets.hits as it draws (see pointer() in screens.js).
@@ -43,27 +42,10 @@ function flameText(ctx, str, cx, y, scale, t) {
   }
 }
 
-// The landing page: the pin-up does the warning, the words just list what's in the game.
+// The landing page: the video does the warning, the words just list what's in the game.
 export const GATE_TEXT = ['STRONG LANGUAGE.', 'CRUDE SEXUAL HUMOR.', 'BRUTAL INSULTS.', 'CARTOON VIOLENCE.', '', 'NOT FOR KIDS.', 'NOT EVEN A LITTLE.'];
 export const GATE_PROMPT = ['PRESS ENTER OR CLICK', 'IF YOU ARE A GROWN-ASS ADULT'];
 export const GATE_PROMPT_TOUCH = ['TAP', 'IF YOU ARE A GROWN-ASS ADULT'];
-
-// Imported HD art (assets/pinup): fitted to the gate's height (a little taller, so her hops never show its bottom
-// edge), moved row by row with the painted girl's motion. Pose images, if given, stand in for those moments;
-// without a tease image she fidgets instead.
-const ART_H = 328;
-function drawPinupArt(ctx, art, t) {
-  const m = pinupMotion(t), img = art.poseImgs[m.pose] ?? art.img;
-  const scale = ART_H / img.height, w = Math.round(img.width * scale), x0 = 140 - (w >> 1), y0 = H - 320 + m.body;
-  const rows = artRows(ART_H, art.chest, m);
-  const fidget = m.pose === 'tease' && !art.poseImgs.tease ? (Math.floor(t * 16) % 2 ? 1 : -1) : 0;
-  ctx.imageSmoothingEnabled = !art.pixelated;
-  for (let y = 0; y < ART_H; y++) { // each screen row shows the source row dy above it: content shifts, nothing tears
-    const sy = Math.max(0, Math.min(ART_H - 1, y - rows.dy[y])) / scale;
-    ctx.drawImage(img, 0, sy, img.width, 1 / scale, x0 + rows.dx[y] + fidget, y0 + y, w, 1);
-  }
-  ctx.imageSmoothingEnabled = false;
-}
 
 function drawGate(ctx, s, a = {}) {
   ctx.fillStyle = COLOR.gateBg; ctx.fillRect(0, 0, W, H);
@@ -73,17 +55,7 @@ function drawGate(ctx, s, a = {}) {
   }
   ctx.fillStyle = COLOR.gateHazard;
   for (let i = 0; i < W; i += 24) { ctx.fillRect(i, 0, 12, 6); ctx.fillRect(i + 12, H - 6, 12, 6); } // hazard edges
-  if (a.gateVideo?.playing) a.gateVideo.draw(ctx); // Eddie's video stands in for the pin-up once it is really playing
-  else if (a.pinupArt) drawPinupArt(ctx, a.pinupArt, s.t);
-  else {
-    const pin = pinupCanvas(pinupFrame(s.t)); // painted at full detail: drawn 1:1, cut at mid-thigh by the bottom of the screen
-    const px = Math.round(140 - pin.canvas.width / 2), py = H - PINUP_GROUND, sh = pinupShimmy(s.t);
-    ctx.imageSmoothingEnabled = false;
-    if (!sh.s && !sh.lag) ctx.drawImage(pin.canvas, px, py);
-    else for (let y = 0; y < pin.canvas.height; y++) { // the shimmy: each row slides its own way
-      ctx.drawImage(pin.canvas, 0, y, pin.canvas.width, 1, px + shimmyOffset(y, sh.s, sh.lag), py + y, pin.canvas.width, 1);
-    }
-  }
+  if (a.gateVideo?.playing) a.gateVideo.draw(ctx); // Eddie's video; nothing stands in for it while it loads
 
   const cx = 450;
   flameText(ctx, 'HOLD IT', cx, 40, 6, s.t);
@@ -343,27 +315,38 @@ function letterBoxes(ctx, text, slots, cx, y, t, scale = 4) {
   }
 }
 
+// The tap keyboard, in touch mode: each key is a tap region (pointer() in screens.js types it).
+function drawKeys(ctx, s, a) {
+  for (const key of softKeys(s.screen)) {
+    box(ctx, key.x, key.y, key.w, key.h, COLOR.panelStrong, key.k === 'OK' ? COLOR.ok : COLOR.panelEdge);
+    const label = key.k === 'SPC' ? '_' : key.k, small = label.length > 1;
+    drawStyled(ctx, label, key.x + key.w / 2, key.y + (small ? 11 : 5), small ? 'body' : 'heading', key.k === 'OK' ? 'ok' : 'gold', { align: 'center' });
+    hit(a, key.x, key.y, key.w, key.h, { a: 'key', k: key.k });
+  }
+}
+
 function drawName(ctx, s, a) {
   a.lava.draw(ctx, s.t, 2);
   flameText(ctx, 'WHO ARE YOU?', W / 2, 50, 6, s.t);
-  drawStyled(ctx, 'TYPE YOUR NAME. YOUR FRIENDS WILL SEE IT IN THE LOBBY.', W / 2, 108, 'small', 'text', { align: 'center' });
+  drawStyled(ctx, s.touch ? 'TAP YOUR NAME. YOUR FRIENDS WILL SEE IT IN THE LOBBY.' : 'TYPE YOUR NAME. YOUR FRIENDS WILL SEE IT IN THE LOBBY.', W / 2, 108, 'small', 'text', { align: 'center' });
   letterBoxes(ctx, s.nameInput, 10, W / 2, 140, s.t, 3);
-  footer(ctx, s, 'ENTER TO CONTINUE   BACKSPACE TO FIX   ESC BACK');
-  hit(a, W / 2 - 160, 140, 320, 40, { a: 'ok' });
+  if (s.touch) drawKeys(ctx, s, a);
+  else { footer(ctx, s, 'ENTER TO CONTINUE   BACKSPACE TO FIX   ESC BACK'); hit(a, W / 2 - 160, 140, 320, 40, { a: 'ok' }); }
 }
 
 function drawJoin(ctx, s, a) {
   a.lava.draw(ctx, s.t, 2);
   flameText(ctx, 'JOIN ONLINE', W / 2, 40, 6, s.t);
-  drawStyled(ctx, 'TYPE THE 4-LETTER ROOM CODE YOUR FRIEND SEES ON THEIR SCREEN', W / 2, 100, 'small', 'text', { align: 'center' });
+  drawStyled(ctx, `${s.touch ? 'TAP' : 'TYPE'} THE 4-LETTER ROOM CODE YOUR FRIEND SEES ON THEIR SCREEN`, W / 2, 100, 'small', 'text', { align: 'center' });
   letterBoxes(ctx, s.joinCode, 4, W / 2, 128, s.t, 6);
-  if (s.joinStatus === 'connecting') drawStyled(ctx, `CONNECTING${'.'.repeat(1 + (Math.floor(s.t * 3) % 3))}`, W / 2, 210, 'body', 'cyan', { align: 'center' });
+  const statusY = s.touch ? LAYOUT.keyboard.statusY : 210; // above the tap keyboard in touch mode
+  if (s.joinStatus === 'connecting') drawStyled(ctx, `CONNECTING${'.'.repeat(1 + (Math.floor(s.t * 3) % 3))}`, W / 2, statusY, 'body', 'cyan', { align: 'center' });
   if (s.joinError) {
     const lines = wrap(s.joinError, 520, 2);
-    lines.forEach((l, i) => drawStyled(ctx, l, W / 2, 210 + i * 16, 'body', 'danger', { align: 'center' }));
+    lines.forEach((l, i) => drawStyled(ctx, l, W / 2, statusY + i * 16, 'body', 'danger', { align: 'center' }));
   }
-  footer(ctx, s, 'ENTER TO JOIN   BACKSPACE TO FIX   ESC BACK');
-  hit(a, W / 2 - 160, 128, 320, 60, { a: 'ok' });
+  if (s.touch) drawKeys(ctx, s, a);
+  else { footer(ctx, s, 'ENTER TO JOIN   BACKSPACE TO FIX   ESC BACK'); hit(a, W / 2 - 160, 128, 320, 60, { a: 'ok' }); }
 }
 
 const LOBBY_LABEL = { pick: 'PICK YOUR COMBO', start: 'GO TO RACE', leave: 'LEAVE' };

@@ -52,7 +52,7 @@ export function containRect(vw, vh, w, h) {
   return { x: Math.round((w - dw) / 2), y: Math.round((h - dh) / 2), w: dw, h: dh };
 }
 
-// The video fitted to the screen height, centred on x = cx (where the gate's pin-up stands).
+// The video fitted to the screen height, centred on x = cx (the gate's left side, beside the warning).
 export function gateVideoRect(vw, vh, h, cx) {
   if (!(vw > 0) || !(vh > 0)) return null;
   const w = Math.round(vw * h / vh);
@@ -115,9 +115,9 @@ export function createIntroPlayer(settings, { base = 'assets/intro/', lava = nul
 }
 
 // Browser only. The gate-placement player: muted, looping, started as soon as the settings load. draw() paints
-// nothing until the video is really playing, so the gate shows the pin-up meanwhile (and for good if it fails).
+// nothing until the video is really playing, so her spot on the gate stays empty meanwhile (and for good if it fails).
 // Once on, it stays on: the loop's wrap back to frame 0 (currentTime 0, readyState dipping) must not flash the
-// pin-up, so draw() copies each ready frame into `hold` and paints that, keeping the last good frame through a dip.
+// empty spot, so draw() copies each ready frame into `hold` and paints that, keeping the last good frame through a dip.
 export function createGateVideo(settings, { base = 'assets/intro/', cx = 140, video = document.createElement('video'), hold = null } = {}) {
   video.playsInline = true; video.setAttribute('playsinline', ''); video.muted = true; video.loop = true; video.preload = 'auto';
   video.style.display = 'none';
@@ -129,7 +129,7 @@ export function createGateVideo(settings, { base = 'assets/intro/', cx = 140, vi
     video.src = base + src;
     try { video.play()?.catch(() => {}); } catch { failed = true; }
   };
-  video.addEventListener('error', play); // the local-only file is missing: try the public fallback, else the pin-up stays
+  video.addEventListener('error', play); // the local-only file is missing: try the public fallback, else the spot stays empty
   return {
     start: play,
     get playing() {

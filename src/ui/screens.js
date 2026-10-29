@@ -211,6 +211,7 @@ export function pointer(s, region, kind, locked = false) {
   if (kind === 'back') return [input(s, 'back')];
   if (!region) return [];
   if (kind === 'move') return region.a === 'select' ? [input(s, 'select', region.i)] : [];
+  if (region.a === 'key') return [pressKey(s, region.k)];
   if (region.a !== 'select' && region.a !== 'vehicle') return [input(s, region.a)];
   const outs = [input(s, region.a, region.i)];
   if (region.then !== null) outs.push(input(s, region.then ?? 'ok'));
@@ -235,6 +236,14 @@ export function typeChar(s, ch) {
   const c = String(ch).toUpperCase();
   if (s.screen === 'name' && /^[A-Z0-9 ]$/.test(c) && s.nameInput.length < NAME_MAX && !(c === ' ' && !s.nameInput)) s.nameInput += c;
   else if (s.screen === 'join' && /^[A-Z]$/.test(c) && s.joinCode.length < CODE_LENGTH && s.joinStatus !== 'connecting') { s.joinCode += c; s.joinError = null; }
+}
+
+// A key on the tap keyboard (softKeyboard.js): a letter or digit, SPC, DEL, OK or BACK.
+export function pressKey(s, k) {
+  if (k === 'OK') return input(s, 'ok');
+  if (k === 'BACK') return input(s, 'back');
+  if (k === 'DEL') backspace(s); else typeChar(s, k === 'SPC' ? ' ' : k);
+  return { sfx: 'ui_move' };
 }
 
 export function backspace(s) {

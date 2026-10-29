@@ -3,7 +3,6 @@ import { createHitRegions, toCanvas } from './hitRegions.js';
 import { createTransitioner, transitionFor } from './transitions.js';
 import { loadUnlocks } from '../series/series.js';
 import { drawScreen, drawCaption } from './drawScreens.js';
-import { loadPinupArt } from './pinupArt.js';
 import { loadIntroSettings, createIntroPlayer, shouldPlay, markPlayed, createGateVideo } from './introVideo.js';
 import { createLavaBackdrop } from './lavaBackdrop.js';
 import { createShowcase, portraitCanvas } from './showcase.js';
@@ -33,7 +32,7 @@ export function createFrontEnd(canvas, { storage = globalThis.localStorage ?? nu
   const s = createScreens({ settings, playerName: savedName, unlocks: loadUnlocks(storage) });
   const actions = [];
   const hits = createHitRegions(), tr = createTransitioner();
-  const assets = { lava: createLavaBackdrop(), showcase: createShowcase(), portrait: portraitCanvas, pinupArt: null, hits };
+  const assets = { lava: createLavaBackdrop(), showcase: createShowcase(), portrait: portraitCanvas, hits };
   // The outgoing frame for a transition: copied off the canvas before the new screen draws over it.
   const snap = Object.assign(document.createElement('canvas'), { width: canvas.width, height: canvas.height });
   const snapCtx = snap.getContext('2d');
@@ -44,12 +43,11 @@ export function createFrontEnd(canvas, { storage = globalThis.localStorage ?? nu
     snapCtx.drawImage(canvas, 0, 0);
     tr.start(transitionFor(from, to), snap);
   }
-  loadPinupArt().then(art => { assets.pinupArt = art; }); // imported HD art, if there is any
   let introSettings = null, introStore = null;
   try { introStore = globalThis.sessionStorage ?? null; } catch { /* blocked */ }
   loadIntroSettings().then(cfg => {
     introSettings = cfg;
-    if (cfg?.placement === 'gate' && s.screen === 'gate') { assets.gateVideo = createGateVideo(cfg); assets.gateVideo.start(); } // in the pin-up's place
+    if (cfg?.placement === 'gate' && s.screen === 'gate') { assets.gateVideo = createGateVideo(cfg); assets.gateVideo.start(); } // on the gate's left side
   }); // the intro video slot; null: straight to the title
   const refreshIntro = () => { s.introReady = shouldPlay(introSettings, introStore); };
   let caption = null, captionT = 0, pending = null;
