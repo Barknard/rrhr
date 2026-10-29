@@ -1,5 +1,7 @@
 import { applyDamage } from './damage.js';
 import { gapTo } from '../physics/collide.js';
+import { behindOnRoad } from './weapons.js';
+import { MOLTEN_TRAIL } from '../series/bosses.js';
 
 // Vehicle-specific mechanics (see carStats extras): Last Ride's ram, Demo Derrick's wrecking ball and
 // Rattler's trailers. Simulation state, so the host decides it like everything else; it is all plain
@@ -119,6 +121,16 @@ function stepTrailers(race, car) {
   }
 }
 
+// King Cinder's Slaghog: every few seconds, a weak napalm patch behind it. The first lands once the race is on.
+function stepMoltenTrail(race, car, dt) {
+  if (race.phase !== 'racing' || car.wrecked || car.fallen || car.flying) return;
+  car.moltenT = (car.moltenT ?? MOLTEN_TRAIL.every) - dt;
+  if (car.moltenT > 0) return;
+  car.moltenT += car.stats.moltenTrail;
+  const [x, y] = behindOnRoad(race, car, MOLTEN_TRAIL.back);
+  race.entities.push({ type: 'fire', owner: car, x, y, z: car.z, age: 0, damageMul: MOLTEN_TRAIL.damageMul });
+}
+
 // Called by createRace so trailers and the ball are there (and drawn) from the grid, before GO.
 export function setupAbilities(race) {
   for (const car of race.cars) {
@@ -139,6 +151,7 @@ export const abilitySystem = {
   },
   after(race, inputs, dt) {
     for (const car of race.cars) {
+      if (car.stats.moltenTrail) stepMoltenTrail(race, car, dt);
       if (car.stats.ball) stepBall(race, car, dt);
       if (car.stats.trailers) stepTrailers(race, car);
     }

@@ -746,6 +746,76 @@ export const LINES = {
     "[deadpan] {name}, you didn't lose the season. The season lost you. Respectfully.",
     "[laughs] {name}, last place all season! [snorts] Your car filed for divorce!",
     "[sarcastic] Ladies and gentlemen, {name}! Living proof that anybody can drive! Badly!"
+  ],
+  "cinder_intro": [
+    "[deadpan] So. {name}. The pit sent me another snack. Race my circuit and I'll melt you down for scrap.",
+    "[mischievously] {name}, is it? Cute name. It'll look great on a tombstone made of slag.",
+    "[dramatically] Kneel, {name}. Every track in this circuit is my kingdom, and you're trespassing.",
+    "[sarcastic] Oh good, {name} wants a crown. Win three races and I'll let you lose the fourth to me.",
+    "[laughs] {name}! I've roasted marshmallows tougher than you. [chuckles] I ate those too.",
+    "[deadpan] Four races, {name}. Three to warm you up. One to cook you through.",
+    "[dramatically] I am King Cinder, and you, {name}, are kindling. Drive. Burn. Repeat.",
+    "[mischievously] Win my circuit, {name}, and you can have my ride. Lose, and I keep your ashes."
+  ],
+  "cinder_taunt": [
+    "[laughs] Made it to the finale, {name}? [chuckles] Good. I hate eating alone.",
+    "[deadpan] Three races of luck, {name}. Now meet the Crucible. It doesn't do luck.",
+    "[mischievously] {name}, the lava's warm and so is my engine. Let's see who cools off first.",
+    "[dramatically] Welcome to my Crucible, {name}. Nobody leaves here with a crown but me.",
+    "[sarcastic] Nice points, {name}. Shame they melt at nine hundred degrees.",
+    "[deadpan] One race left, {name}. Pray, if you know how. Drive, if you don't.",
+    "[laughs] {name}, I watched your last three races. [snorts] I'm not even worried.",
+    "[dramatically] The Slaghog is hungry, {name}. And you look like lunch."
+  ],
+  "boss_enter": [
+    "[dramatically] Ladies and gentlemen, KING CINDER! Seven feet of angry rock and zero chill!",
+    "[shouting] The King is on the grid! Everybody act natural and try not to catch fire!",
+    "[sarcastic] Oh great, King Cinder's here. My insurance guy just hung up on me.",
+    "[excited] Here comes the Slaghog! It's a car, it's a furnace, it's a really bad day for everybody!",
+    "[dramatically] Bow down, peasants! King Cinder has entered the Crucible!",
+    "[groans] Great. A walking volcano with a driver's license. Who signed off on this?",
+    "[mischievously] King Cinder's on the grid. Fun fact: his last pit crew is now a patio.",
+    "[excited] The boss is HERE! Somebody turn up the heat! Oh wait, he IS the heat!"
+  ],
+  "boss_leads": [
+    "[groans] King Cinder takes the lead. Of course he does. He's made of lava and spite.",
+    "[sarcastic] And the King is in front. Long live the King, short live everybody else.",
+    "[shouting] The Slaghog's out front and it's dropping fire like a bad habit!",
+    "[deadpan] King Cinder leads. Everybody else is just driving through his leftovers.",
+    "[laughs] Cinder takes the lead! [snorts] You're losing to a barbecue grill with a crown!",
+    "[surprised] He's in FRONT! How is a rock that big that fast?",
+    "[sarcastic] First place, King Cinder. Second place, the smell of everybody's burning pride.",
+    "[shouting] The King has the lead! Somebody knock that crown off his big dumb head!"
+  ],
+  "boss_wrecked": [
+    "[shouting] KING CINDER IS DOWN! The rock has been ROCKED!",
+    "[surprised] Somebody wrecked the King! Treason! Beautiful, beautiful treason!",
+    "[excited] The Slaghog is scrap! Somebody bring marshmallows!",
+    "[laughs] Cinder blew up! [laughs harder] Lava man got hot-potatoed!",
+    "[shouting] The King is wrecked! Don't celebrate yet, rocks bounce back!",
+    "[impressed] They wrecked the boss! I didn't think he had a weak spot, let alone a reverse gear!",
+    "[mischievously] Down goes the King! He'll be back, and he'll be cranky.",
+    "[shouting] BOOM! The royal family's gonna need a new crown!"
+  ],
+  "boss_beaten": [
+    "[shouting] {name} BEAT KING CINDER! The King is dead! Long live {name}!",
+    "[impressed] {name} just beat the boss! I take back roughly half the things I said!",
+    "[shouting] The crown goes to {name}! Cinder, go sit in the lava and think about what you did!",
+    "[excited] {name} did it! The Slag Circuit has a new champion!",
+    "[impressed] Unbelievable! {name} out-drove a volcano! Put that on a T-shirt!",
+    "[laughs] King Cinder LOST! [snorts] To {name}! I'm framing this!",
+    "[shouting] Bow down to {name}! The Slaghog just became a trade-in!",
+    "[sarcastic] Hey Cinder, how's it feel? {name} just mopped the floor with your crown!"
+  ],
+  "boss_wins": [
+    "[groans] King Cinder wins. And {name} gets to go home smelling like a fireplace.",
+    "[laughs] The King keeps his crown! [snorts] {name}, you got cooked. Well done, even!",
+    "[sarcastic] Cinder wins! Great job, {name}. You made a rock look fast.",
+    "[deadpan] Long live the King. {name}, try again. Bring a fire extinguisher this time.",
+    "[dramatically] The Crucible claims another one! The King reigns!",
+    "[laughs] {name} lost to a guy made of gravel! [chuckles] Gravel, folks!",
+    "[sighs] King Cinder takes it. Somebody hose down {name}'s ego.",
+    "[sarcastic] Cinder wins again! Somebody get {name} a participation trophy. A fireproof one."
   ]
 };
 
@@ -1156,6 +1226,41 @@ export const TRIGGERS = {
     "cooldown": 0
   },
   "season_loser": {
+    "priority": 6,
+    "chance": 1,
+    "cooldown": 0
+  },
+  "cinder_intro": {
+    "priority": 6,
+    "chance": 1,
+    "cooldown": 0
+  },
+  "cinder_taunt": {
+    "priority": 6,
+    "chance": 1,
+    "cooldown": 0
+  },
+  "boss_enter": {
+    "priority": 5,
+    "chance": 1,
+    "cooldown": 0
+  },
+  "boss_leads": {
+    "priority": 3,
+    "chance": 0.7,
+    "cooldown": 10
+  },
+  "boss_wrecked": {
+    "priority": 5,
+    "chance": 1,
+    "cooldown": 0
+  },
+  "boss_beaten": {
+    "priority": 6,
+    "chance": 1,
+    "cooldown": 0
+  },
+  "boss_wins": {
     "priority": 6,
     "chance": 1,
     "cooldown": 0

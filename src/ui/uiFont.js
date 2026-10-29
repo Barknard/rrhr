@@ -1,3 +1,4 @@
+import { drawSmall, smallWidth } from '../render/smallFont.js';
 // The 3x5 pixel font from render/font.js plus the symbols the menus need (& + % " < > ( ) # = *).
 // TODO(integration): fold the extra glyphs into render/font.js and drop this copy.
 const GLYPHS = {
@@ -15,9 +16,10 @@ const GLYPHS = {
   '*': '000101010101000',
 };
 
-export const textWidth = (str, scale = 1) => Math.max(0, String(str).length * 4 - 1) * scale;
+export const textWidth = (str, scale = 1) => (scale === 1 ? smallWidth(str) : Math.max(0, String(str).length * 4 - 1) * scale);
 
 export function drawText(ctx, str, x, y, color, shadow = '#000', scale = 1) {
+  if (scale === 1) { drawSmall(ctx, str, x, y, color, shadow); return; }
   str = String(str).toUpperCase();
   x = Math.round(x); y = Math.round(y);
   for (const [dx, col] of shadow ? [[scale, shadow], [0, color]] : [[0, color]]) {

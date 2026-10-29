@@ -20,7 +20,7 @@ const alive = c => !c.wrecked && !c.fallen && !c.flying; // a car flying off the
 const fwd = car => [Math.cos(car.heading), Math.sin(car.heading)];
 const knockOf = c => c.stats.knockMul ?? 1;
 
-function behindOnRoad(race, car, back) {
+export function behindOnRoad(race, car, back) {
   const [dx, dy] = fwd(car);
   const x = car.x - dx * back, y = car.y - dy * back;
   return race.track.isDrivable(x, y) ? [x, y] : [car.x, car.y];
@@ -178,7 +178,7 @@ function stepFire(race, e, dt, burned) {
     if (c === e.owner || !alive(c) || c.stats.hover || burned.has(c)) continue;
     if (gapTo(c, e.x, e.y) < NAPALM.r && Math.abs(c.z - e.z) < HIT_HEIGHT) {
       burned.add(c);
-      applyDamage(race, c, NAPALM.dps * dt, e.owner, 'napalm');
+      applyDamage(race, c, NAPALM.dps * (e.damageMul ?? 1) * dt, e.owner, 'napalm');
     }
   }
 }

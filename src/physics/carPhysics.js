@@ -1,4 +1,4 @@
-import { CAR_STATS } from '../cars/carStats.js';
+import { vehicleStats } from '../series/bosses.js';
 
 export const GRAVITY = 70;          // px/s²
 export const CAR_RADIUS = 0.3;      // tiles
@@ -30,7 +30,7 @@ const num = v => (Number.isFinite(v) ? v : 0);
 
 export function createCar(key, spawn) {
   return {
-    key, stats: CAR_STATS[key],
+    key, stats: vehicleStats(key),
     x: spawn.x, y: spawn.y, z: spawn.h,
     vx: 0, vy: 0, vz: 0, heading: spawn.dir,
     grounded: true, fallen: false, respawnTimer: 0, flying: null,

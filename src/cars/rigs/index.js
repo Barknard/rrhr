@@ -12,9 +12,11 @@ import { lastRide } from './lastRide.js';
 import { afterburner } from './afterburner.js';
 import { demoDerrick } from './demoDerrick.js';
 import { whirlybird } from './whirlybird.js';
+import { slaghog } from './slaghog.js';
 
-// Every vehicle's rig, keyed by car key (see carStats.js).
+// Every vehicle's rig, keyed by car key (see carStats.js), plus the series boss's ride (see series/bosses.js).
 export const RIGS = {
   grinder, widowmaker, boneshaker, hellwheel, skimmer, nullHalo, hogHitch,
   stomper, gravedigger, rattler, lastRide, afterburner, demoDerrick, whirlybird,
+  slaghog,
 };

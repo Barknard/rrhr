@@ -1,4 +1,6 @@
-// 3x5 bitmap font, drawn pixel by pixel with a 1px drop shadow.
+import { drawSmall, smallWidth } from './smallFont.js';
+
+// Scale 1 is the 5x7 font (smallFont.js); bigger scales scale up this 3x5 font, drawn pixel by pixel with a drop shadow.
 const GLYPHS = {
   A: '010101111101101', B: '110101110101110', C: '011100100100011', D: '110101101101110', E: '111100110100111',
   F: '111100110100100', G: '011100101101011', H: '101101111101101', I: '111010010010111', J: '001001001101010',
@@ -12,9 +14,10 @@ const GLYPHS = {
   '&': '010101010101011', '(': '010100100100010', ')': '010001001001010',
 };
 
-export const textWidth = (str, scale = 1) => (String(str).length * 4 - 1) * scale;
+export const textWidth = (str, scale = 1) => (scale === 1 ? smallWidth(str) : (String(str).length * 4 - 1) * scale);
 
 export function drawText(ctx, str, x, y, color, shadow = '#000', scale = 1) {
+  if (scale === 1) { drawSmall(ctx, str, x, y, color, shadow); return; }
   str = String(str).toUpperCase();
   for (const [dx, col] of shadow ? [[scale, shadow], [0, color]] : [[0, color]]) {
     ctx.fillStyle = col;

@@ -1,4 +1,7 @@
 import { LINES, TRIGGERS } from './lines.js';
+import { BOSS } from '../series/bosses.js';
+
+const isBoss = c => c?.stats?.driver === BOSS.driver; // King Cinder, in a series finale
 import { standings } from '../game/race.js';
 
 // "Big Mouth" Mel Mangano's brain. Pure: it watches the race (events plus snapshots) and returns at most one
@@ -100,13 +103,14 @@ export function createAnnouncer({ lines = LINES, triggers = TRIGGERS, rng = Math
     const base = { leader: name(leader), last: order.length > 1 ? name(lastCar) : null, track: race.track?.def?.name, lap: null };
     const cands = [];
     const add = (trigger, vars) => cands.push({ trigger, vars: { ...base, ...vars } });
+    const boss = race.cars.find(isBoss), firstHuman = race.cars.find(c => c.human);
 
     for (const e of race.events) {
       if (seen.has(e)) continue;
       seen.add(e);
       const who = name(e.car);
       switch (e.type) {
-        case 'go': add('go', {}); break;
+        case 'go': add('go', {}); break; // with the boss on the grid, the game says boss_enter instead of the intro
         case 'wreck': {
           const k = e.attacker && e.attacker !== e.car ? e.attacker : null;
           if (k) {
@@ -122,6 +126,7 @@ export function createAnnouncer({ lines = LINES, triggers = TRIGGERS, rng = Math
           } else if (e.cause === 'bomb') add('kill_bomb', { victim: who });
           else add('self_wreck', { name: who });
           track.killedBy.set(e.car, k);
+          if (isBoss(e.car)) add('boss_wrecked', { killer: name(k) });
           break;
         }
         case 'flyoff': add('flyoff', { name: who }); break;
@@ -151,7 +156,9 @@ export function createAnnouncer({ lines = LINES, triggers = TRIGGERS, rng = Math
         case 'finish': {
           const fin = race.finishOrder ?? [];
           if (e.place === 2 && fin[0] && Math.abs((e.car.finishTime ?? 0) - (fin[0].finishTime ?? 0)) < 0.5) add('photo_finish', { winner: name(fin[0]), second: who });
+          if (isBoss(e.car) && firstHuman && !race.cars.some(c => c.human && c.finished && c !== e.car)) add('boss_wins', { name: name(firstHuman) });
           if (!e.car.human) break;
+          if (boss && !boss.finished) add('boss_beaten', { name: who });
           if (e.place === 1) add('win_human', { name: who });
           else if (e.place === race.cars.length) add('finish_last', { name: who });
           else add('finish_mid', { name: who, place: PLACES[e.place - 1] });
@@ -174,7 +181,7 @@ export function createAnnouncer({ lines = LINES, triggers = TRIGGERS, rng = Math
     });
 
     if (race.phase === 'racing') {
-      if (track.leader && leader !== track.leader && race.time > 3) add('lead_change', { leader: name(leader), loser: name(track.leader) });
+      if (track.leader && leader !== track.leader && race.time > 3) add(isBoss(leader) ? 'boss_leads' : 'lead_change', { leader: name(leader), loser: name(track.leader) });
       track.leader = leader;
       const second = order[1];
       if (second && race.track?.length && leader.dist - second.dist > race.track.length / 2) add('blowout', {});

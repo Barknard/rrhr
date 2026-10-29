@@ -1,4 +1,5 @@
 import { CAR_STATS } from '../cars/carStats.js';
+import { driverDef, vehicleKeyOf } from '../series/bosses.js';
 
 // The eight drivers. mods are percentages applied to the vehicle's handling stats; each driver's mods sum
 // to about zero so nobody is strictly better. Driving a driver's favourite ride adds +5% to all five.
@@ -47,11 +48,10 @@ export const DRIVERS = {
 export const DRIVER_KEYS = Object.keys(DRIVERS);
 
 const FAV_BONUS = 1.05;
-const vehicleKeyOf = stats => Object.keys(CAR_STATS).find(k => CAR_STATS[k].name === stats.name);
 
 // Vehicle stats with the driver's percentages applied. Returns a new object; extras are copied as-is.
 export function combineStats(vehicle, driverKey) {
-  const d = DRIVERS[driverKey];
+  const d = driverDef(driverKey);
   if (!d) return { ...vehicle };
   const fav = vehicleKeyOf(vehicle) === d.fav, f = fav ? FAV_BONUS : 1;
   const k = p => (1 + p / 100) * f;

@@ -1,11 +1,17 @@
-import { createScreens, input, tick, typeChar, backspace } from './screens.js';
+import { createScreens, input, tick, typeChar, backspace, pointer, enterSeriesScreen } from './screens.js';
+import { createHitRegions, toCanvas } from './hitRegions.js';
+import { createTransitioner, transitionFor } from './transitions.js';
+import { loadUnlocks } from '../series/series.js';
 import { drawScreen, drawCaption } from './drawScreens.js';
 import { loadPinupArt } from './pinupArt.js';
 import { createLavaBackdrop } from './lavaBackdrop.js';
 import { createShowcase, portraitCanvas } from './showcase.js';
 import { createAnnouncer } from '../audio/announcer.js';
+import { LAYOUT, TIMING } from './theme.js';
 
-// The whole front end (gate, title, options, select, VS) with the announcer as captions, for one canvas.
+// The whole front end (gate, title, options, select, VS, series screens) with the announcer as captions, for one
+// canvas. Every screen change plays a transition over the new screen (input is held for its first moments), and the
+// mouse works everywhere: hover selects, click activates, right-click is back.
 // There is no audio (Eddie's call). The game calls frame(dt) and gets { start, actions } back: start when a race
 // should begin, actions for anything online (host, join, pick, ready, startOnline, leaveOnline, cancelJoin).
 const KEYMAP = {
@@ -14,7 +20,6 @@ const KEYMAP = {
 };
 const SETTINGS_KEY = 'rrhr.settings', NAME_KEY = 'rrhr.name';
 const TYPING = new Set(['name', 'join']);
-const READ_WORDS_PER_SEC = 3.2;
 
 export function createFrontEnd(canvas, { storage = globalThis.localStorage ?? null, onLeave = () => {} } = {}) {
   const ctx = canvas.getContext('2d');
@@ -24,16 +29,27 @@ export function createFrontEnd(canvas, { storage = globalThis.localStorage ?? nu
   const announcer = createAnnouncer({ storage });
   let savedName = '';
   try { savedName = storage?.getItem(NAME_KEY) ?? ''; } catch { /* no storage */ }
-  const s = createScreens({ settings, playerName: savedName });
+  const s = createScreens({ settings, playerName: savedName, unlocks: loadUnlocks(storage) });
   const actions = [];
-  const assets = { lava: createLavaBackdrop(), showcase: createShowcase(), portrait: portraitCanvas, pinupArt: null };
+  const hits = createHitRegions(), tr = createTransitioner();
+  const assets = { lava: createLavaBackdrop(), showcase: createShowcase(), portrait: portraitCanvas, pinupArt: null, hits };
+  // The outgoing frame for a transition: copied off the canvas before the new screen draws over it.
+  const snap = Object.assign(document.createElement('canvas'), { width: canvas.width, height: canvas.height });
+  const snapCtx = snap.getContext('2d');
+  const nameOf = () => (s.screen === 'select' ? s.select.step : s.screen); // the select's phases are 'driver' and 'ride'
+  let shown = nameOf();
+  function transition(from, to) {
+    snapCtx.clearRect(0, 0, snap.width, snap.height);
+    snapCtx.drawImage(canvas, 0, 0);
+    tr.start(transitionFor(from, to), snap);
+  }
   loadPinupArt().then(art => { assets.pinupArt = art; }); // imported HD art, if there is any
   let caption = null, captionT = 0, pending = null;
 
   // Show a line long enough to read it; the announcer won't cut in with something less important meanwhile.
   function show(text) {
     if (!text) return;
-    const secs = text.split(/\s+/).length / READ_WORDS_PER_SEC + 0.8;
+    const secs = text.split(/\s+/).length / TIMING.readWordsPerSec + TIMING.readPadSecs;
     announcer.speaking(secs);
     if (!s.settings.captions) return;
     caption = text; captionT = secs;
@@ -49,6 +65,7 @@ export function createFrontEnd(canvas, { storage = globalThis.localStorage ?? nu
     if (out.speak) show(out.speak);
     if (out.say) show(out.say.map(x => announcer.say(x.trigger, x.vars)?.text).filter(Boolean).join(' '));
     if (out.start) { pending = out.start; announcer.save(); }
+    for (const k of ['seriesNext', 'seriesRetry', 'seriesQuit']) if (out[k]) actions.push({ [k]: true });
     if (out.saveName) { try { storage?.setItem(NAME_KEY, out.saveName); } catch { /* not saved */ } }
     for (const k of ['online', 'join', 'pick', 'ready', 'startOnline', 'leaveOnline', 'cancelJoin']) if (out[k]) actions.push({ [k]: out[k] });
   }
@@ -62,12 +79,27 @@ export function createFrontEnd(canvas, { storage = globalThis.localStorage ?? nu
     const action = KEYMAP[e.code];
     if (!action || s.screen === 'race') return;
     e.preventDefault();
+    if (tr.locked) return; // a transition is holding input: a double-press can't skip a screen
     // only the arrows auto-repeat: a held Enter or Esc must not race through screens (or off the 18+ gate)
     if (!e.repeat || ['up', 'down', 'left', 'right'].includes(action)) handle(input(s, action));
   };
-  const onClick = () => { if (s.screen === 'gate') handle(input(s, 'ok')); };
+  // The pointer: regions are in canvas pixels, the events in CSS pixels.
+  const regionAt = e => { const p = toCanvas(e.clientX, e.clientY, canvas.getBoundingClientRect(), canvas.width, canvas.height); return hits.at(p.x, p.y); };
+  const live = () => s.screen !== 'race';
+  const onMove = e => {
+    if (!live()) return;
+    const r = regionAt(e);
+    canvas.style.cursor = r ? 'pointer' : 'default';
+    for (const out of pointer(s, r, 'move', tr.locked)) handle(out);
+  };
+  const onClick = e => { if (live()) for (const out of pointer(s, regionAt(e), 'click', tr.locked)) handle(out); };
+  const onContext = e => { e.preventDefault(); if (live()) for (const out of pointer(s, null, 'back', tr.locked)) handle(out); };
   addEventListener('keydown', onKey);
+  canvas.addEventListener('pointermove', onMove);
   canvas.addEventListener('click', onClick);
+  canvas.addEventListener('contextmenu', onContext);
+
+  function drawTransition(dt) { tr.step(dt); tr.draw(ctx); }
 
   // The announcer's caption strip, drawn over whatever is on screen (menus or the race).
   function overlay(dt, place) {
@@ -82,26 +114,39 @@ export function createFrontEnd(canvas, { storage = globalThis.localStorage ?? nu
       handle(tick(s, dt));
       announcer.tick(dt);
       s.captionOn = captionT > 0;
+      const now = nameOf();
+      if (now !== shown && now !== 'race') transition(shown, now); // the canvas still holds the old screen
+      shown = now;
+      hits.clear();
       drawScreen(ctx, s, assets, dt);
-      // the combo screen's loadout and GO button live at the bottom, so its captions take the title's place; on the
-      // driver and ride screens they sit between the panels and the key hints
-      const sel = s.screen === 'select' ? s.select.step : null;
-      overlay(dt, sel === 'combo' ? { top: 4 } : sel ? { top: 292 } : undefined);
+      // full-screen pages keep their buttons at the bottom, so captions take the title's place at the top
+      overlay(dt, ['select', 'standings'].includes(s.screen) ? { top: LAYOUT.caption.comboTop } : undefined);
+      drawTransition(dt);
       const start = pending; pending = null;
       return { start, actions: actions.splice(0) };
     },
+    // The game's own screen changes (into a race or a transmission): snapshot what's on the canvas now, then play
+    // the effect over whatever the game draws next (it calls drawTransition after drawing).
+    transition(from, to) { transition(from, to); shown = to; },
+    drawTransition,
+    get locked() { return tr.locked; },
+    setTouch(on) { s.touch = !!on; },
+    showSeries(screen, view) { enterSeriesScreen(s, screen, view); },
     // Show an in-race announcer line (from announcer.hear) the same way the menus do.
     caption: show,
     // The game owns the keyboard during a race, however the race was started.
-    suspend() { s.screen = 'race'; },
+    suspend() { s.screen = 'race'; shown = 'race'; },
     toSelect() { s.screen = 'select'; s.select.step = 'driver'; },
     toLobby() { s.screen = 'lobby'; },
-    toTitle(message) { s.screen = 'title'; s.online = null; s.lobby = null; if (message) s.flash = { text: message, t: 3 }; },
+    toTitle(message) { s.screen = 'title'; s.online = null; s.lobby = null; if (message) s.flash = { text: message, t: TIMING.titleMessageSecs }; },
     // A shared #join=CODE link: straight to the join screen with the code filled in (after the name, if needed).
     openJoin(code) {
       s.joinCode = code; s.joinError = null; s.joinStatus = null;
       if (s.playerName) s.screen = 'join'; else { s.screen = 'name'; s.nameFor = 'join'; s.nameInput = ''; s.keepJoinCode = code; }
     },
-    dispose() { removeEventListener('keydown', onKey); canvas.removeEventListener('click', onClick); },
+    dispose() {
+      removeEventListener('keydown', onKey);
+      canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('click', onClick); canvas.removeEventListener('contextmenu', onContext);
+    },
   };
 }
