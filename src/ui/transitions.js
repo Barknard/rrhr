@@ -9,7 +9,8 @@ export const LOCK = TIMING.trLock;
 const W = 640, H = 360;
 
 export function transitionFor(from, to) {
-  if (from === 'gate' && to === 'title') return 'slam';
+  if (from === 'gate' && (to === 'title' || to === 'intro')) return 'slam';
+  if (from === 'intro') return 'static';
   if (from === 'title' && to === 'driver') return 'flame';
   if ((from === 'driver' && to === 'ride') || (from === 'ride' && to === 'driver')) return 'whip';
   if ((from === 'ride' && to === 'vs') || (from === 'vs' && to === 'race')) return 'shutter';

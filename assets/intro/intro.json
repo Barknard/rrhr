@@ -1,0 +1,1 @@
+{ "video": "intro.mp4", "fallback": "intro-public.mp4", "blend": "screen", "sound": true, "oncePerSession": true, "placement": "gate" }

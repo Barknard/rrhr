@@ -1,3 +1,4 @@
+import { createIntroState, skipIntro, stepIntro } from './introVideo.js';
 import { DRIVER_KEYS } from '../drivers/drivers.js';
 import { BOSS, driverDef } from '../series/bosses.js';
 import { normalizeCode, CODE_LENGTH } from '../net/protocol.js';
@@ -56,6 +57,7 @@ export function createScreens({ rng = Math.random, settings = { captions: true }
   };
 }
 
+const TITLE_SPEAK = 'Roll! And! Rock! Hard! Racing!';
 const sayVars = s => ({ name: driverDef(pickedDriver(s)).short });
 
 function pickRivals(s) {
@@ -71,8 +73,12 @@ export function input(s, action, arg = 0) {
   const out = {};
   switch (s.screen) {
     case 'gate':
-      if (action === 'ok') { s.screen = 'title'; s.titleAt = s.t; Object.assign(out, { sfx: 'ui_select', speak: 'Roll! And! Rock! Hard! Racing!' }); }
+      if (action === 'ok' && s.introReady) { s.screen = 'intro'; s.intro = createIntroState(); s.introEnded = false; Object.assign(out, { sfx: 'ui_select', introStart: true, gateAccept: true }); } // the front end starts the video inside this key or click
+      else if (action === 'ok') { s.screen = 'title'; s.titleAt = s.t; Object.assign(out, { sfx: 'ui_select', speak: TITLE_SPEAK, gateAccept: true }); }
       else if (action === 'back') out.leave = true;
+      break;
+    case 'intro': // any confirm or back skips
+      if (action === 'ok' || action === 'back') skipIntro(s.intro);
       break;
     case 'title':
       if (action === 'select') s.menuIdx = wrap(arg, MENU.length);
@@ -264,6 +270,10 @@ export function enterVs(s, player, rivals) {
 
 export function tick(s, dt) {
   s.t += dt;
+  if (s.screen === 'intro') {
+    if (stepIntro(s.intro, dt, s.introEnded).phase === 'done') { s.screen = 'title'; s.titleAt = s.t; return { speak: TITLE_SPEAK, introStop: true }; }
+    return {};
+  }
   if (s.flash && (s.flash.t -= dt) <= 0) s.flash = null;
   if (s.screen === 'vs' && (s.vs.timer += dt) >= VS_TIME) {
     s.screen = 'race';

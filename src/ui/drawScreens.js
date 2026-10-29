@@ -73,7 +73,8 @@ function drawGate(ctx, s, a = {}) {
   }
   ctx.fillStyle = COLOR.gateHazard;
   for (let i = 0; i < W; i += 24) { ctx.fillRect(i, 0, 12, 6); ctx.fillRect(i + 12, H - 6, 12, 6); } // hazard edges
-  if (a.pinupArt) drawPinupArt(ctx, a.pinupArt, s.t);
+  if (a.gateVideo?.playing) a.gateVideo.draw(ctx); // Eddie's video stands in for the pin-up once it is really playing
+  else if (a.pinupArt) drawPinupArt(ctx, a.pinupArt, s.t);
   else {
     const pin = pinupCanvas(pinupFrame(s.t)); // painted at full detail: drawn 1:1, cut at mid-thigh by the bottom of the screen
     const px = Math.round(140 - pin.canvas.width / 2), py = H - PINUP_GROUND, sh = pinupShimmy(s.t);
@@ -470,6 +471,7 @@ function drawBeaten(ctx, s, a) {
 
 export function drawScreen(ctx, s, assets, dt = 1 / 60) {
   if (s.screen === 'gate') drawGate(ctx, s, assets);
+  else if (s.screen === 'intro') { ctx.fillStyle = COLOR.introBg; ctx.fillRect(0, 0, W, H); assets.introPlayer?.draw(ctx, s.intro, s.t); hit(assets, 0, 0, W, H, { a: 'ok' }); }
   else if (s.screen === 'title') drawTitle(ctx, s, assets);
   else if (s.screen === 'options') drawOptions(ctx, s, assets);
   else if (s.screen === 'name') drawName(ctx, s, assets);

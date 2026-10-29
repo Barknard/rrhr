@@ -4,6 +4,7 @@ import { createTransitioner, transitionFor } from './transitions.js';
 import { loadUnlocks } from '../series/series.js';
 import { drawScreen, drawCaption } from './drawScreens.js';
 import { loadPinupArt } from './pinupArt.js';
+import { loadIntroSettings, createIntroPlayer, shouldPlay, markPlayed, createGateVideo } from './introVideo.js';
 import { createLavaBackdrop } from './lavaBackdrop.js';
 import { createShowcase, portraitCanvas } from './showcase.js';
 import { createAnnouncer } from '../audio/announcer.js';
@@ -44,6 +45,13 @@ export function createFrontEnd(canvas, { storage = globalThis.localStorage ?? nu
     tr.start(transitionFor(from, to), snap);
   }
   loadPinupArt().then(art => { assets.pinupArt = art; }); // imported HD art, if there is any
+  let introSettings = null, introStore = null;
+  try { introStore = globalThis.sessionStorage ?? null; } catch { /* blocked */ }
+  loadIntroSettings().then(cfg => {
+    introSettings = cfg;
+    if (cfg?.placement === 'gate' && s.screen === 'gate') { assets.gateVideo = createGateVideo(cfg); assets.gateVideo.start(); } // in the pin-up's place
+  }); // the intro video slot; null: straight to the title
+  const refreshIntro = () => { s.introReady = shouldPlay(introSettings, introStore); };
   let caption = null, captionT = 0, pending = null;
 
   // Show a line long enough to read it; the announcer won't cut in with something less important meanwhile.
@@ -62,6 +70,12 @@ export function createFrontEnd(canvas, { storage = globalThis.localStorage ?? nu
       settings = { ...s.settings };
       try { storage?.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* not saved */ }
     }
+    if (out.introStart && introSettings) {
+      assets.introPlayer = createIntroPlayer(introSettings, { lava: assets.lava, onPlaying: () => { if (introSettings.oncePerSession) markPlayed(introStore); } });
+      assets.introPlayer.start(); // inside the gate's key or click: autoplay is allowed
+    }
+    if (out.gateAccept && assets.gateVideo) { assets.gateVideo.unmute(); assets.gateVideo.stop(); assets.gateVideo = null; } // the click that accepts also unmutes; then it is released
+    if (out.introStop) { assets.introPlayer?.stop(); assets.introPlayer = null; }
     if (out.speak) show(out.speak);
     if (out.say) show(out.say.map(x => announcer.say(x.trigger, x.vars)?.text).filter(Boolean).join(' '));
     if (out.start) { pending = out.start; announcer.save(); }
@@ -111,6 +125,8 @@ export function createFrontEnd(canvas, { storage = globalThis.localStorage ?? nu
   return {
     state: s, announcer, overlay,
     frame(dt) {
+      if (s.screen === 'gate') refreshIntro();
+      s.introEnded = !!assets.introPlayer?.ended;
       handle(tick(s, dt));
       announcer.tick(dt);
       s.captionOn = captionT > 0;

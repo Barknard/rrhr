@@ -34,6 +34,7 @@ export const COLOR = {
   // panels and bars
   panel: tint('panelInk', 0.78), panelStrong: tint('panelInk', 0.85), panelSoft: tint('panelInk', 0.55), veil: tint('panelInk', 0.62),
   panelEdge: '#3a2a40', barBack: '#2a2030', armorBack: '#331', portraitBack: '#140e18',
+  introBg: '#000', introVeil: tint('veil', 0.6), introVignette: tint('black', 0.8),
   toast: tint('toast', 0.9), titleVeil: tint('veil', 0.45), pauseVeil: tint('veil', 0.6),
   tagBack: tint('black', 0.7), tagYouBack: tint('youTag', 0.9), tagFallback: '#ccc',
   // buttons and highlighted rows (ember = the hot, selected look)
@@ -79,6 +80,7 @@ export const TIMING = {
   pauseBlinkSecs: 0.5,
   // screen transitions (each 0.6 s or less), and how long input is held at the start of one
   trSlam: 0.5, trFlame: 0.55, trWhip: 0.4, trShutter: 0.6, trStatic: 0.35, trLock: 0.15,
+  introFadeIn: 0.3, introFadeOut: 0.5, introSkipOut: 0.15, // the intro video's fades
   seriesResultsSecs: 1.2, // the race results stay up at least this long before a click moves on to the standings
 };
 
