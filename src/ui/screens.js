@@ -37,8 +37,9 @@ export const OPTIONS = [{ key: 'captions', label: 'ANNOUNCER CAPTIONS', toggle: 
 const VS_TIME = 2.5, NAME_MAX = 10;
 const wrap = (i, n) => ((i % n) + n) % n;
 
-// The strips: the roster, plus King Cinder and the Slaghog once beaten (offline only).
-const bossOn = s => !!s.unlocks?.boss && !s.online;
+// The strips: the roster, plus King Cinder and the Slaghog once beaten (offline quick races only: the series finale
+// already has its own King Cinder, so a series never offers him).
+const bossOn = s => !!s.unlocks?.boss && !s.online && s.mode !== 'series';
 export const driverList = s => (bossOn(s) ? [...DRIVER_KEYS, BOSS.driver] : DRIVER_KEYS);
 export const vehicleList = s => (bossOn(s) ? [...VEHICLE_KEYS, BOSS.vehicle] : VEHICLE_KEYS);
 export const pickedDriver = s => driverList(s)[s.select.driverIdx] ?? DRIVER_KEYS[0];
@@ -79,7 +80,10 @@ export function input(s, action, arg = 0) {
       else if (action === 'ok') {
         const item = MENU[s.menuIdx];
         if (item.disabled) { out.sfx = 'ui_back'; s.flash = { text: `${item.label}: COMING SOON`, t: 1.5 }; }
-        else if (item.id === 'race' || item.id === 'series') { s.mode = item.id; s.screen = 'select'; s.select.step = 'driver'; out.sfx = 'ui_select'; }
+        else if (item.id === 'race' || item.id === 'series') {
+          s.mode = item.id; s.screen = 'select'; s.select.step = 'driver'; out.sfx = 'ui_select';
+          s.select.driverIdx = Math.min(s.select.driverIdx, driverList(s).length - 1); s.select.vehicleIdx = Math.min(s.select.vehicleIdx, vehicleList(s).length - 1); // the boss strips may have shrunk
+        }
         else if (item.id === 'options') { s.screen = 'options'; s.optIdx = 0; out.sfx = 'ui_select'; }
         else if (!s.playerName) { s.screen = 'name'; s.nameFor = item.id; s.nameInput = ''; out.sfx = 'ui_select'; }
         else Object.assign(out, goOnline(s, item.id));
@@ -164,13 +168,23 @@ export function input(s, action, arg = 0) {
     case 'standings': case 'champion': case 'beaten': {
       const items = SERIES_ITEMS[s.screen], item = items[s.seriesIdx];
       const weapon = item === 'forward' || item === 'drop';
-      if (action === 'select') s.seriesIdx = wrap(arg, items.length);
+      if (s.quitAsk) { // QUIT THE SERIES? YES / NO: only YES leaves
+        const q = s.quitAsk;
+        if (action === 'select') q.idx = wrap(arg, 2);
+        else if (['up', 'down', 'left', 'right'].includes(action)) { q.idx = 1 - q.idx; out.sfx = 'ui_move'; }
+        else if (action === 'back' || (action === 'ok' && q.idx === 1)) { s.quitAsk = null; out.sfx = 'ui_back'; }
+        else if (action === 'ok') { s.quitAsk = null; s.screen = 'title'; s.series = null; out.seriesQuit = true; out.sfx = 'ui_back'; }
+        break;
+      }
+      if (action === 'back' && s.screen !== 'champion') { s.seriesIdx = items.indexOf('quit'); out.sfx = 'ui_move'; } // Esc or right-click only moves to QUIT
+      else if (action === 'select') s.seriesIdx = wrap(arg, items.length);
       else if (weapon && (action === 'left' || action === 'right' || action === 'ok')) { // change weapons before each race
         const list = item === 'forward' ? FORWARD_WEAPONS : DROP_WEAPONS;
         s.loadout[item] = list[wrap(list.indexOf(s.loadout[item]) + (action === 'left' ? -1 : 1), list.length)];
         out.sfx = 'ui_move';
       } else if (['up', 'down', 'left', 'right'].includes(action)) { s.seriesIdx = wrap(s.seriesIdx + (action === 'up' || action === 'left' ? -1 : 1), items.length); out.sfx = 'ui_move'; }
-      else if (action === 'back' || (action === 'ok' && (item === 'quit' || item === 'done'))) { s.screen = 'title'; s.series = null; out.seriesQuit = true; out.sfx = 'ui_back'; }
+      else if (action === 'ok' && item === 'quit') { s.quitAsk = { idx: 1 }; out.sfx = 'ui_select'; } // NO is the safe default
+      else if (action === 'back' || (action === 'ok' && item === 'done')) { s.screen = 'title'; s.series = null; out.seriesQuit = true; out.sfx = 'ui_back'; }
       else if (action === 'ok' && item === 'next') { out.seriesNext = true; out.sfx = 'ui_select'; } // the game takes over the screen
       else if (action === 'ok' && item === 'retry') { out.seriesRetry = true; out.sfx = 'ui_select'; }
       break;
@@ -199,7 +213,7 @@ export function pointer(s, region, kind, locked = false) {
 
 // Between series races: the standings, then SERIES CHAMPION or KING CINDER WINS. view comes from the series flow.
 export function enterSeriesScreen(s, screen, view) {
-  s.screen = screen; s.series = view; s.seriesIdx = Math.max(0, SERIES_ITEMS[screen].indexOf('next')); // NEXT RACE first
+  s.screen = screen; s.series = view; s.quitAsk = null; s.seriesIdx = Math.max(0, SERIES_ITEMS[screen].indexOf('next')); // NEXT RACE first
   if (screen === 'champion') s.unlocks = { ...s.unlocks, ...Object.fromEntries((view.unlocked ?? []).map(k => [k, true])) };
 }
 

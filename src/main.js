@@ -18,6 +18,9 @@ import { COLOR, TIMING, LAYOUT, tint, drawStyled, styledWidth } from './ui/theme
 import { createCamera, scaleForWindow, introFocus, VIEW_W, VIEW_H } from './game/camera.js';
 import { gridToScreen } from './core/iso.js';
 import { createInput } from './game/input.js';
+import { debugEnabled, fastFactor } from './game/debug.js';
+import { createPauseMenu, pauseTitle, pauseInput, pauseRects, PAUSE_LABEL } from './game/pauseMenu.js';
+import { createHitRegions, toCanvas } from './ui/hitRegions.js';
 import { createRace, stepRace, COUNTDOWN, standings } from './game/race.js';
 import { layoutTags, drawTags } from './render/nameTags.js';
 import { cpuInput } from './ai/cpuDriver.js';
@@ -78,7 +81,7 @@ let mode = 'menu', combos = null, raceKey = null; // menu: the front end owns th
 const pick = arr => arr[(Math.random() * arr.length) | 0];
 const fe = createFrontEnd(screen, { onLeave: () => { location.href = 'about:blank'; } });
 fe.setTouch(touchMode);
-const FAST = new URLSearchParams(location.search).has('fast') ? 4 : 1; // debug: run races 4x for play-testing a series
+const FAST = fastFactor(location.hostname, location.search); // debug only: run races 4x for play-testing a series
 // The series in play (offline only): the flow says what comes next; seriesIds maps race car i to its series id.
 let series = null, seriesIds = null, fromScreen = 'vs', finishedFor = 0;
 // Online: net is null offline, else { role: 'host' | 'guest', session, code }. The race being drawn is the host's
@@ -131,6 +134,7 @@ function prepSprites() {
 // combos: [{ driver, vehicle, loadout?, human? }] in grid order (yours is the human one, or the first). R reuses the
 // same four on the same track. Boss keys resolve through vehicleStats / driverDef.
 async function newRace(next = combos, key = raceKey ?? QUICK_TRACK) {
+  pm = null;
   combos = next; raceKey = key;
   const me = Math.max(0, combos.findIndex(c => c.human));
   if (combos[me].loadout) loadout = { ...combos[me].loadout }; // the weapons picked on the ride screen
@@ -172,6 +176,7 @@ async function startScene(raceObj, mySeat, key = QUICK_TRACK, trk = key === QUIC
 }
 
 function toMenu() {
+  pm = null;
   fe.announcer.save();
   race = null;
   mode = 'menu';
@@ -183,6 +188,7 @@ function toMenu() {
 
 // A guest's race ended by the host going back to the lobby.
 function guestToLobby(message) {
+  pm = null;
   race = null; mode = 'menu';
   fe.toLobby();
   fe.state.flash = { text: message, t: 3 };
@@ -194,6 +200,7 @@ const ONLINE_ERRORS = {
 };
 
 function leaveOnline(message) {
+  pm = null;
   net?.session.close();
   net = null; hostLeftAt = null;
   race = null; mode = 'menu';
@@ -214,15 +221,33 @@ function confirmKey(code, message) {
 
 // Offline races pause when the window loses focus (a click elsewhere shouldn't get you wrecked); online can't wait.
 let paused = false;
-addEventListener('blur', () => { if (mode === 'race' && !net && race?.phase !== 'finished') paused = true; });
+addEventListener('blur', () => { if (mode === 'race' && !net && !pm && race?.phase !== 'finished') paused = true; });
+
+// The pause overlay (Esc, or the PAUSE soft button): RESUME / QUIT TO MENU; online it can't stop the race, so it
+// offers RESUME / LEAVE RACE. See game/pauseMenu.js.
+let pm = null;
+const pmHits = createHitRegions();
+const PM_KEYS = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', Enter: 'ok', NumpadEnter: 'ok', Space: 'ok', Escape: 'back' };
+function openPauseMenu() {
+  if (mode !== 'race' || pm || !race || race.phase === 'finished' || upright()) return;
+  pm = createPauseMenu({ series: !!series, online: !!net });
+}
+function pauseAction(action, arg) {
+  if (!pm) return;
+  const done = pauseInput(pm, action, arg);
+  if (!done) return;
+  if (done === 'resume') { pm = null; input.read(); } // (flushes the keys tapped while it was up)
+  else if (done === 'leave') leaveOnline(); else toMenu();
+}
 
 const SKIP_KEYS = new Set(['Enter', 'NumpadEnter', 'Escape', 'Space']);
 const input = createInput(window, code => {
   if (mode === 'transmission') { if (SKIP_KEYS.has(code)) skipTransmission(); return; }
   if (mode !== 'race') return;
   if (paused) { if (!upright()) { paused = false; input.read(); } return; } // any key resumes, and doesn't also fire
+  if (pm) { if (PM_KEYS[code]) pauseAction(PM_KEYS[code]); return; }
   if (series && race?.phase === 'finished') { if (SKIP_KEYS.has(code)) seriesAfterRace(); return; }
-  if (code === 'Escape' && confirmKey(code, series ? 'PRESS ESC AGAIN TO QUIT THE SERIES' : 'PRESS ESC AGAIN FOR THE MENU')) { toMenu(); return; }
+  if (code === 'Escape') { if (race?.phase === 'finished') toMenu(); else openPauseMenu(); return; }
   if (net) return; // online: the host starts races from the lobby, and loadouts are locked once you're in
   if (code === 'KeyR' && confirmKey(code, 'PRESS R AGAIN TO RESTART')) newRace();
   if (code === 'Tab') { loadout.forward = cycle(FORWARD, loadout.forward); player.loadout.forward = loadout.forward; flash(`FORWARD: ${WEAPONS[loadout.forward].name}`, 1.2); }
@@ -384,14 +409,39 @@ function skipTransmission() { if (trans && !fe.locked) trans.t = Math.max(trans.
 
 // Taps and clicks the game owns: the pause overlay resumes, a transmission skips, a finished series race moves on,
 // and a finished quick race goes back to pick a new combo (like Esc: a phone has no keys).
-screen.addEventListener('click', () => {
+screen.addEventListener('click', e => {
   if (mode === 'transmission') skipTransmission();
-  else if (mode === 'race' && paused) { if (!upright()) { paused = false; input.read(); } }
+  else if (mode === 'race' && pm) {
+    const p = toCanvas(e.clientX, e.clientY, screen.getBoundingClientRect(), screen.width, screen.height), r = pmHits.at(p.x, p.y);
+    if (r) { pauseAction('select', r.i); pauseAction('ok'); }
+  } else if (mode === 'race' && paused) { if (!upright()) { paused = false; input.read(); } }
   else if (mode === 'race') {
     const tap = afterRaceTap({ series: !!series, online: !!net, phase: race?.phase, finishedFor, minSecs: TIMING.seriesResultsSecs });
     if (tap === 'series') seriesAfterRace(); else if (tap === 'menu') toMenu();
   }
 });
+
+screen.addEventListener('pointermove', e => {
+  if (mode !== 'race' || !pm) return;
+  const p = toCanvas(e.clientX, e.clientY, screen.getBoundingClientRect(), screen.width, screen.height), r = pmHits.at(p.x, p.y);
+  if (r) pauseAction('select', r.i);
+});
+screen.addEventListener('contextmenu', e => { if (mode === 'race' && pm) { e.preventDefault(); pauseAction('back'); } });
+
+// Draws the pause overlay and registers its buttons as hit regions.
+function drawPauseMenu() {
+  pmHits.clear();
+  ctx.fillStyle = COLOR.pauseVeil; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  drawStyled(ctx, pauseTitle(pm), VIEW_W / 2, LAYOUT.pause.menuTitleY, 'title', 'gold', { align: 'center' });
+  for (const b of pauseRects(pm)) {
+    const on = b.i === pm.idx;
+    ctx.fillStyle = on ? COLOR.ember : COLOR.panel; ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = on ? COLOR.gold : COLOR.panelEdge;
+    ctx.fillRect(b.x, b.y, b.w, 1); ctx.fillRect(b.x, b.y + b.h - 1, b.w, 1); ctx.fillRect(b.x, b.y, 1, b.h); ctx.fillRect(b.x + b.w - 1, b.y, 1, b.h);
+    drawStyled(ctx, PAUSE_LABEL[b.id], b.x + b.w / 2, b.y + 6, 'body', on ? 'gold' : 'muted', { align: 'center' });
+    pmHits.add(b.x, b.y, b.w, b.h, { i: b.i });
+  }
+}
 
 let last = performance.now(), acc = 0;
 function tick(now) {
@@ -408,7 +458,7 @@ let softShown = null;
 function frameStep(dt) {
   const soft = touchMode && mode === 'race' && !upright();
   if (soft !== softShown) { softShown = soft; controls.show(soft); }
-  if (upright() && mode === 'race' && !net && race?.phase !== 'finished') paused = true; // turned upright: offline play waits
+  if (upright() && mode === 'race' && !net && !pm && race?.phase !== 'finished') paused = true; // turned upright: offline play waits
   if (mode === 'menu') {
     menuOnline();
     const out = fe.frame(dt);
@@ -428,14 +478,15 @@ function frameStep(dt) {
     drawTransmission(ctx, trans.script, Math.min(trans.t, transEnd()), transAssets);
     fe.drawTransition(dt);
     if (trans.t >= transEnd()) { const then = trans.then; trans = null; mode = 'loading'; then(); }
-  } else if (mode === 'race' && paused) {
+  } else if (mode === 'race' && (paused || (pm && !net))) {
     acc = 0;
     render();
-    if (!upright()) { // (upright, the turn-sideways overlay below says it all)
+    if (pm) drawPauseMenu();
+    else if (!upright()) { // (upright, the turn-sideways overlay below says it all)
       ctx.fillStyle = COLOR.pauseVeil; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
       drawStyled(ctx, 'PAUSED', VIEW_W / 2, LAYOUT.pause.titleY, 'huge', 'gold', { align: 'center' });
     }
-    if (!upright() && Math.floor(performance.now() / (TIMING.pauseBlinkSecs * 1000)) % 2) drawStyled(ctx, touchMode ? 'TAP TO RESUME' : 'PRESS ANY KEY OR CLICK', VIEW_W / 2, LAYOUT.pause.hintY, 'body', 'text', { align: 'center' });
+    if (!pm && !upright() && Math.floor(performance.now() / (TIMING.pauseBlinkSecs * 1000)) % 2) drawStyled(ctx, touchMode ? 'TAP TO RESUME' : 'PRESS ANY KEY OR CLICK', VIEW_W / 2, LAYOUT.pause.hintY, 'body', 'text', { align: 'center' });
   } else if (mode === 'race') {
     acc += dt * FAST;
     while (acc >= STEP && mode === 'race') { update(STEP); acc -= STEP; t += STEP; }
@@ -443,6 +494,7 @@ function frameStep(dt) {
     if (race.phase === 'finished') finishedFor += dt;
     render();
     fe.overlay(dt, { x: 236, w: VIEW_W - 244 }); // right of the inventory panel and portrait
+    if (pm) drawPauseMenu(); // (online: the race goes on underneath)
     fe.drawTransition(dt);
   }
   if (upright()) { // a phone held upright: ask for landscape over whatever is showing
@@ -451,7 +503,7 @@ function frameStep(dt) {
     drawStyled(ctx, 'SIDEWAYS', VIEW_W / 2, LAYOUT.pause.hintY - 10, 'title', 'gold', { align: 'center' });
   }
 }
-const controls = createTouchControls(document.body, input);
+const controls = createTouchControls(document.body, input, window, openPauseMenu);
 controls.show(false);
 
 function seriesAction(a) {
@@ -517,7 +569,7 @@ function onlineAction(a) {
 window.addEventListener('pagehide', () => net?.session.close());
 
 // Debug handle for the browser console and automated play-tests: on localhost, or anywhere with ?debug.
-if (location.hostname === 'localhost' || new URLSearchParams(location.search).has('debug')) window.rrhr = {
+if (debugEnabled(location.hostname, location.search)) window.rrhr = {
   get race() { return race; }, get player() { return player; }, get world() { return world; }, get track() { return track; }, input,
   get mode() { return mode; }, fe, get net() { return net; }, online, get series() { return series; }, get trans() { return trans; },
   render: () => render(), update: dt => update(dt ?? STEP), newRace, frameStep: dt => frameStep(dt ?? STEP),

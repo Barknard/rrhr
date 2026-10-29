@@ -408,6 +408,16 @@ function seriesButtons(ctx, s, a, y) {
   });
 }
 
+// QUIT THE SERIES? over the page; a click anywhere else (or Esc) answers NO.
+function quitAsk(ctx, s, a) {
+  if (!s.quitAsk) return;
+  const P = LAYOUT.pause;
+  ctx.fillStyle = COLOR.pauseVeil; ctx.fillRect(0, 0, W, H);
+  hit(a, 0, 0, W, H, { a: 'back' });
+  drawStyled(ctx, 'QUIT THE SERIES?', W / 2, P.menuTitleY, 'title', 'gold', { align: 'center' });
+  ['YES', 'NO'].forEach((label, i) => button(ctx, a, s, (W - P.btnW) / 2, P.btnY + i * (P.btnH + P.btnGap), P.btnW, P.btnH, label, i === s.quitAsk.idx, { a: 'select', i }));
+}
+
 function drawStandings(ctx, s, a) {
   a.lava.draw(ctx, s.t, 1);
   const v = s.series ?? { table: [], result: [], race: 0, total: 4, caption: '' };
@@ -427,6 +437,7 @@ function drawStandings(ctx, s, a) {
   if (v.caption) drawStyled(ctx, v.caption, W / 2, 270, 'small', 'gold', { align: 'center' });
   seriesButtons(ctx, s, a, 290);
   footer(ctx, s, 'UP/DOWN CHOOSE   LEFT/RIGHT CHANGE WEAPON   ENTER PICK   ESC QUIT');
+  quitAsk(ctx, s, a);
 }
 
 function drawChampion(ctx, s, a) {
@@ -454,6 +465,7 @@ function drawBeaten(ctx, s, a) {
   drawStyled(ctx, 'YOU FINISHED BEHIND THE KING', W / 2, 246, 'body', 'text', { align: 'center' });
   drawStyled(ctx, 'RETRY FINALE: SAME PICKS, STRAIGHT BACK TO THE CRUCIBLE', W / 2, 266, 'small', 'muted', { align: 'center' });
   seriesButtons(ctx, s, a, 290);
+  quitAsk(ctx, s, a);
 }
 
 export function drawScreen(ctx, s, assets, dt = 1 / 60) {

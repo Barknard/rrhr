@@ -66,7 +66,7 @@ export const LAYOUT = {
   nameTag: { x: 0, y: 0, w: 60, h: 11, gap: 1, lift: 30, nameMax: 8 },
   toast: { y: H - 46, h: 20 },
   loading: { bigY: 140, nameY: 182, dotsY: 202 },
-  pause: { titleY: 150, hintY: 190 },
+  pause: { titleY: 150, hintY: 190, menuTitleY: 96, btnW: 200, btnH: 26, btnGap: 8, btnY: 160 },
 };
 
 export const TIMING = {

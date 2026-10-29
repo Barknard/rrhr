@@ -11,12 +11,15 @@ export function softLayout(viewW, viewH) {
   const gw = Math.min(viewW, viewH * 16 / 9), gh = gw * 9 / 16;
   const game = { x: (viewW - gw) / 2, y: (viewH - gh) / 2, w: gw, h: gh };
   const bar = game.x, m = 8, g = 8, buttons = [];
+  let pause; // the PAUSE button (not a driving control): top of the left bar, or the top-left corner when floating
   const put = (id, x, y, w, h) => buttons.push({ id, rect: { x, y, w, h } });
   if (bar >= BAR_MIN) {
     const s = Math.min(bar - 2 * m, 84), lx = (bar - s) / 2, rx = viewW - bar + lx;
-    const h = Math.max(MIN_BTN, Math.min(s, (viewH - 2 * m - 2 * g) / 3));
-    // left thumb: steer left, steer right, brake below them
-    put('left', lx, m, s, h); put('right', lx, m + h + g, s, h); put('brake', lx, m + 2 * (h + g), s, h);
+    pause = { x: lx, y: m, w: s, h: MIN_BTN };
+    const top = m + MIN_BTN + g;
+    const h = Math.max(MIN_BTN, Math.min(s, (viewH - top - m - 2 * g) / 3));
+    // left thumb: steer left, steer right, brake below the pause button
+    put('left', lx, top, s, h); put('right', lx, top + h + g, s, h); put('brake', lx, top + 2 * (h + g), s, h);
     // right thumb: big gas, then fire, drop, nitro
     const gasH = Math.max(MIN_BTN, Math.min(s * 1.5, viewH * 0.3));
     const sh = Math.max(MIN_BTN, Math.min(s, (viewH - 2 * m - 3 * g - gasH) / 3));
@@ -25,6 +28,7 @@ export function softLayout(viewW, viewH) {
     put('drop', rx, m + gasH + g + sh + g, s, sh);
     put('nitro', rx, m + gasH + 2 * (g + sh), s, sh);
   } else {
+    pause = { x: m, y: m, w: 64, h: MIN_BTN };
     const s = Math.max(MIN_BTN, Math.min(72, viewH * 0.16)), base = viewH - m - s;
     const gasS = s * 1.3, top = base - (gasS - s) - g - s;
     put('left', m, base, s, s); put('right', m + s + g, base, s, s); put('brake', m, base - s - g, s, s);
@@ -33,7 +37,7 @@ export function softLayout(viewW, viewH) {
     put('drop', viewW - m - 2 * s - g, top, s, s);
     put('nitro', viewW - m - s, top - s - g, s, s);
   }
-  return { game, buttons };
+  return { game, buttons, pause };
 }
 
 // Button ids held -> input state.
@@ -71,7 +75,7 @@ export function createFullscreenAsker(doc, scr) {
 const LABELS = { left: '<', right: '>', brake: 'BRK', gas: 'GAS', fire: 'FIRE', drop: 'DROP', nitro: 'NOS' };
 
 // Browser only. Renders DOM buttons in root and feeds input.touchDown(id) / input.touchUp(id).
-export function createTouchControls(root, input, win = window) {
+export function createTouchControls(root, input, win = window, onPause = () => {}) {
   const doc = root.ownerDocument, els = new Map(), owner = new Map(); // pointerId -> button id
   const wrap = doc.createElement('div');
   wrap.style.cssText = 'position:fixed;inset:0;pointer-events:none;touch-action:none;user-select:none;-webkit-user-select:none;z-index:20';
@@ -93,8 +97,16 @@ export function createTouchControls(root, input, win = window) {
     el.addEventListener('pointerleave', up);
     el.addEventListener('contextmenu', e => e.preventDefault());
   }
+  const pauseEl = doc.createElement('div');
+  pauseEl.textContent = 'PAUSE';
+  pauseEl.style.cssText = els.get('left').style.cssText;
+  pauseEl.style.fontSize = '11px';
+  pauseEl.addEventListener('pointerdown', e => { e.preventDefault(); onPause(); });
+  pauseEl.addEventListener('contextmenu', e => e.preventDefault());
+  wrap.appendChild(pauseEl);
   const layout = () => {
-    const { buttons } = softLayout(win.innerWidth, win.innerHeight);
+    const { buttons, pause } = softLayout(win.innerWidth, win.innerHeight);
+    Object.assign(pauseEl.style, { left: pause.x + 'px', top: pause.y + 'px', width: pause.w + 'px', height: pause.h + 'px' });
     for (const b of buttons) {
       const s = els.get(b.id).style;
       s.left = b.rect.x + 'px'; s.top = b.rect.y + 'px'; s.width = b.rect.w + 'px'; s.height = b.rect.h + 'px';
