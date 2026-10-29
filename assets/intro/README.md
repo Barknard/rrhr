@@ -4,7 +4,7 @@ Drop your video here. The file name is set in `intro.json` (`"video"`, currently
 
 **These videos are local-only:** `assets/intro/*.mp4` is gitignored and never committed or published.
 
-**The one exception is `intro-public.mp4`**, named in `intro.json` as `"fallback"`. It's a short censored loop (frames 122–148 of the intro, played forward then back, with a mosaic over the nipples and the bottoms still on), and it's committed. The game tries `video` first and falls back to it when that file is missing. So this machine plays the full local video, and the public site, which never has it, plays the censored loop.
+**The one exception is `intro-public.mp4`**, named in `intro.json` as `"fallback"`. It's a 3.5 s censored loop, and it's committed. It uses frames 122–148 of the intro, played forward and back twice, with one slow breath warped over the top (the upper body lifts, the chest swells). It has a fixed mosaic over the nipples, applied before the breath so it moves with her, and the bottoms stay on. The game tries `video` first and falls back to it when that file is missing. So this machine plays the full local video, and the public site, which never has it, plays the censored loop.
 
 - Use an H.264 MP4 (a `.webm` also works if you name it in `intro.json`). Keep it under about 20 MB so the website stays quick.
 - `placement`: `"gate"` (the default) plays the video muted and looping on the 18+ gate, in place of the painted pin-up, as soon as it loads; it falls back to the pin-up if the video is missing or fails. If `sound` is true the click that accepts the gate unmutes it, and accepting goes straight to the title. `"afterGate"` plays it full-screen after the gate, before the title.

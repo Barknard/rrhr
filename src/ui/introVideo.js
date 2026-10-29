@@ -116,13 +116,14 @@ export function createIntroPlayer(settings, { base = 'assets/intro/', lava = nul
 
 // Browser only. The gate-placement player: muted, looping, started as soon as the settings load. draw() paints
 // nothing until the video is really playing, so the gate shows the pin-up meanwhile (and for good if it fails).
-export function createGateVideo(settings, { base = 'assets/intro/', cx = 140 } = {}) {
-  const video = document.createElement('video');
+// Once on, it stays on: the loop's wrap back to frame 0 (currentTime 0, readyState dipping) must not flash the
+// pin-up, so draw() copies each ready frame into `hold` and paints that, keeping the last good frame through a dip.
+export function createGateVideo(settings, { base = 'assets/intro/', cx = 140, video = document.createElement('video'), hold = null } = {}) {
   video.playsInline = true; video.setAttribute('playsinline', ''); video.muted = true; video.loop = true; video.preload = 'auto';
   video.style.display = 'none';
-  let failed = false, src = null;
-  const isPlaying = watchPlaying(video, () => {});
+  let failed = false, shown = false, src = null;
   const play = () => {
+    shown = false;
     src = nextSource(settings, src);
     if (!src) { failed = true; return; }
     video.src = base + src;
@@ -131,14 +132,22 @@ export function createGateVideo(settings, { base = 'assets/intro/', cx = 140 } =
   video.addEventListener('error', play); // the local-only file is missing: try the public fallback, else the pin-up stays
   return {
     start: play,
-    get playing() { return !failed && isPlaying() && video.readyState >= 2 && video.currentTime > 0; },
+    get playing() {
+      if (!shown && !failed && video.readyState >= 2 && video.currentTime > 0) shown = true; // its first real frame
+      return shown && !failed;
+    },
     unmute() { if (settings.sound) { try { video.muted = false; } catch { /* stays muted */ } } },
     stop() { try { video.pause(); video.removeAttribute('src'); video.load(); } catch { /* gone */ } },
     draw(ctx) {
       const r = gateVideoRect(video.videoWidth, video.videoHeight, ctx.canvas.height, cx);
       if (!r) return;
+      hold ??= document.createElement('canvas');
+      if (video.readyState >= 2) {
+        if (hold.width !== video.videoWidth || hold.height !== video.videoHeight) { hold.width = video.videoWidth; hold.height = video.videoHeight; }
+        hold.getContext('2d').drawImage(video, 0, 0);
+      }
       ctx.globalCompositeOperation = settings.blend === 'screen' ? 'screen' : 'source-over';
-      ctx.drawImage(video, r.x, r.y, r.w, r.h);
+      ctx.drawImage(hold, r.x, r.y, r.w, r.h);
       ctx.globalCompositeOperation = 'source-over';
     },
   };
