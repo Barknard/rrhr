@@ -3,7 +3,7 @@ import { buildTrack } from './track/buildTrack.js';
 import { vehicleStats, driverDef } from './series/bosses.js';
 import { createSeriesFlow } from './series/flow.js';
 import { TRANSMISSIONS, drawTransmission } from './ui/transmission.js';
-import { softLayout, createTouchControls, isPortrait, createFullscreenAsker } from './game/touch.js';
+import { softLayout, createTouchControls, isPortrait, createFullscreenAsker, padClearX } from './game/touch.js';
 import { RIGS } from './cars/rigs/index.js';
 import { bakeRig } from './cars/rigs/rig.js';
 import { createAnim, stepAnim } from './cars/anim.js';
@@ -338,7 +338,8 @@ function render() {
   drawScene(ctx, { race, world, frame, cam: { x: tl.x + sh, y: tl.y + sv }, t, fx, sprites, vehicles, vdraw, viewW: VIEW_W, viewH: VIEW_H });
   drawNameTags(tl);
   const resultsHint = series ? (finishedFor >= TIMING.seriesResultsSecs ? SERIES_HINT[touchMode ? 'touch' : 'keys'] : ' ') : net ? undefined : quickHint(touchMode);
-  drawHud(ctx, { race, player, banner, t, portrait: portraitCanvas(player.stats.driver, t % 3.2 > 3 ? 1 : 0), minimap, resultsHint });
+  drawHud(ctx, { race, player, banner, t, portrait: portraitCanvas(player.stats.driver, t % 3.2 > 3 ? 1 : 0), minimap, resultsHint,
+    panelX: softShown ? padClearX(innerWidth, innerHeight) : null }); // clear of the phone d-pad
 }
 
 // ---------- the series ----------

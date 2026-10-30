@@ -26,7 +26,7 @@ export function afterRaceTap({ series, online, phase, finishedFor, minSecs = 1.2
   return series ? 'series' : 'menu';
 }
 // resultsHint: the line under the results (a series says how to get to the standings).
-export function drawHud(ctx, { race, player, banner, t, portrait = null, minimap = null, resultsHint = RESULTS_HINT }) {
+export function drawHud(ctx, { race, player, banner, t, portrait = null, minimap = null, resultsHint = RESULTS_HINT, panelX = null }) {
   const order = standings(race);
 
   // standings, top-left
@@ -45,7 +45,8 @@ export function drawHud(ctx, { race, player, banner, t, portrait = null, minimap
   if (minimap) drawMinimap(ctx, minimap, race, player, t, VIEW_W - minimap.w - 3, L.minimap.y); // under the lap timer
 
   // armor and inventory, bottom-left: what you carry, the key that uses it, and how many shots are left
-  const y0 = L.inventory.y, px = L.inventory.x, pw = L.inventory.w;
+  // panelX: on a phone the panel starts right of the d-pad (padClearX in game/touch.js)
+  const y0 = L.inventory.y, px = panelX ?? L.inventory.x, pw = L.inventory.w;
   box(ctx, px, y0, pw, L.inventory.h, 0.7);
   drawStyled(ctx, 'ARMOR', px + 4, y0 + 5, 'small', 'muted');
   ctx.fillStyle = COLOR.armorBack; ctx.fillRect(px + 36, y0 + 4, 70, 8);
@@ -74,7 +75,7 @@ export function drawHud(ctx, { race, player, banner, t, portrait = null, minimap
   }
   const driver = driverDef(player.stats.driver);
   if (driver) {
-    box(ctx, L.driver.x, L.driver.y, L.driver.w, L.driver.h, 0.7);
+    box(ctx, L.driver.x + px - L.inventory.x, L.driver.y, L.driver.w, L.driver.h, 0.7);
     drawStyled(ctx, `${driver.short.toUpperCase()}: ${driver.skill.name}`, px + 5, y0 - 21, 'small', 'cyan');
     if (player.stats.trait) drawStyled(ctx, player.stats.trait.name, px + 5, y0 - 11, 'small', 'salmon');
     if (portrait?.canvas && !player.bonus) ctx.drawImage(portrait.canvas, px + pw + 4, y0 + L.inventory.h - portrait.canvas.height);

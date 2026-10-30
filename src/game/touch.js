@@ -37,6 +37,12 @@ export function dpadIds(dx, dy) {
   if (ay > ax * k) ids.add(dy < 0 ? 'gas' : 'brake');
   return ids;
 }
+// Where the HUD's bottom-left panel (armor, weapons, driver) should start, in 640-wide game pixels, so the d-pad
+// floating over that corner never covers it.
+export function padClearX(viewW, viewH) {
+  const { game, buttons } = softLayout(viewW, viewH), d = buttons.find(b => b.id === 'dpad').rect;
+  return Math.max(4, Math.ceil((d.x + d.w - game.x) * 640 / game.w) + 6);
+}
 const dpadOffset = (r, x, y) => [(x - (r.x + r.w / 2)) / (r.w / 2), (y - (r.y + r.h / 2)) / (r.h / 2)];
 
 // Button ids held -> input state.
