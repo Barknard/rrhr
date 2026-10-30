@@ -1,4 +1,5 @@
 // Mobile soft controls. Pure layout and mapping first, then the DOM wiring.
+import { stickVector } from './stick.js';
 export const MIN_BTN = 44;
 const BAR_MIN = 60; // a side bar at least this wide holds the PAUSE button; otherwise it floats in the corner
 
@@ -8,8 +9,9 @@ const inRect = (r, x, y) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r
 export const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-// See-through controls floating over the corners: a plus d-pad bottom left (up is gas, down is brake), FIRE big in
-// the bottom-right corner with BOOST (nitro) beside it and DROP above it. PAUSE sits top left.
+// See-through controls floating over the corners: the thumb stick bottom left ('dpad' is where it rests; a thumb
+// anywhere in stickZone picks it up there), FIRE big in the bottom-right corner with BOOST (nitro) beside it and
+// DROP above it. PAUSE sits top left.
 export function softLayout(viewW, viewH) {
   const gw = Math.min(viewW, viewH * 16 / 9), gh = gw * 9 / 16;
   const game = { x: (viewW - gw) / 2, y: (viewH - gh) / 2, w: gw, h: gh };
@@ -24,7 +26,9 @@ export function softLayout(viewW, viewH) {
   put('fire', fx, fy, F, F);
   put('nitro', fx - g - B, viewH - m - B - F * 0.35, B, B);
   put('drop', fx + (F - S) / 2, fy - g - S, S, S);
-  return { game, buttons, pause };
+  const top = pause.y + pause.h + g;
+  const stickZone = { x: 0, y: top, w: Math.round(viewW * 0.45), h: viewH - top };
+  return { game, buttons, pause, stickZone };
 }
 
 // A thumb on the d-pad, as an offset from its centre in radii (-1..1 each way) -> the held ids. Each arm covers
@@ -83,14 +87,6 @@ export function createFullscreenAsker(doc, scr) {
 
 const LABELS = { fire: 'FIRE', nitro: 'BOOST', drop: 'DROP' };
 const GLASS = 'rgba(255,255,255,.16)', GLASS_ON = 'rgba(255,255,255,.42)', EDGE = '2px solid rgba(255,255,255,.5)';
-// The plus's arms in a 3x3 grid of thirds; the open side of each arm faces the middle.
-const ARMS = {
-  gas: { cell: [1, 0], open: 'bottom', round: '10px 10px 0 0' },
-  brake: { cell: [1, 2], open: 'top', round: '0 0 10px 10px' },
-  left: { cell: [0, 1], open: 'right', round: '10px 0 0 10px' },
-  right: { cell: [2, 1], open: 'left', round: '0 10px 10px 0' },
-};
-
 // Browser only. Renders DOM controls in root and feeds input.touchDown(id) / input.touchUp(id).
 export function createTouchControls(root, input, win = window, onPause = () => {}) {
   const doc = root.ownerDocument, els = new Map(), owner = new Map(); // pointerId -> button id
@@ -116,36 +112,39 @@ export function createTouchControls(root, input, win = window, onPause = () => {
     el.addEventListener('contextmenu', e => e.preventDefault());
   }
 
-  // The plus: one element for the whole pad, so the thumb can roll from arm to arm; the arms are drawn inside it.
-  const pad = doc.createElement('div');
-  pad.style.cssText = `${base};display:block`;
-  const arms = new Map();
-  for (const [id, arm] of [...Object.entries(ARMS), ['mid', { cell: [1, 1] }]]) {
-    const el = doc.createElement('div');
-    el.style.cssText = `position:absolute;left:${arm.cell[0] * 33.33}%;top:${arm.cell[1] * 33.33}%;width:33.34%;height:33.34%;box-sizing:border-box;pointer-events:none;background:${GLASS}`;
-    if (arm.open) Object.assign(el.style, { border: EDGE, [`border-${arm.open}`]: 'none', borderRadius: arm.round });
-    pad.appendChild(el); arms.set(id, el);
-  }
-  wrap.appendChild(pad);
-  const held = new Map(); // pointerId -> the ids that thumb holds on the pad
-  const padIds = () => new Set([...held.values()].flatMap(set => [...set]));
-  const setPad = (pointerId, next) => {
-    const before = padIds();
-    if (next) held.set(pointerId, next); else held.delete(pointerId);
-    const after = padIds();
-    for (const id of after) if (!before.has(id)) input.touchDown(id);
-    for (const id of before) if (!after.has(id)) input.touchUp(id);
-    for (const [id, el] of arms) if (id !== 'mid') el.style.background = after.has(id) ? GLASS_ON : GLASS;
+  // The thumb stick, floating: a thumb anywhere in the zone becomes the stick's centre, and dragging aims the car
+  // (stick.js turns the drag into steering and gas). At rest the ring sits at its home spot, so it's easy to find.
+  const zone = doc.createElement('div'), ring = doc.createElement('div'), knob = doc.createElement('div');
+  zone.style.cssText = `${base};display:block`;
+  ring.style.cssText = `position:absolute;box-sizing:border-box;border:${EDGE};border-radius:50%;background:${GLASS};pointer-events:none`;
+  knob.style.cssText = `position:absolute;border-radius:50%;background:${GLASS_ON};pointer-events:none`;
+  zone.append(ring, knob); wrap.appendChild(zone);
+  let home = { x: 0, y: 0 }, R = 60, thumb = null, centre = null;
+  const disc = (el, cx, cy, r) => Object.assign(el.style, { left: `${cx - r}px`, top: `${cy - r}px`, width: `${2 * r}px`, height: `${2 * r}px` });
+  const rest = () => { centre = null; disc(ring, home.x, home.y, R); disc(knob, home.x, home.y, R * 0.42); };
+  const local = e => { const r = zone.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  const aim = e => {
+    const p = local(e), d = Math.hypot(p.x - centre.x, p.y - centre.y);
+    if (d > R) { // past the rim: the stick follows the thumb, so it can't be lost
+      centre = { x: p.x - (p.x - centre.x) * R / d, y: p.y - (p.y - centre.y) * R / d };
+      disc(ring, centre.x, centre.y, R);
+    }
+    const v = stickVector(p.x - centre.x, p.y - centre.y, R);
+    disc(knob, centre.x + v.x * R, centre.y + v.y * R, R * 0.42);
+    input.setStick(v);
   };
-  const padAt = e => { const r = pad.getBoundingClientRect(); return dpadIds(...dpadOffset({ x: r.left, y: r.top, w: r.width, h: r.height }, e.clientX, e.clientY)); };
-  pad.addEventListener('pointerdown', e => {
+  zone.addEventListener('pointerdown', e => {
+    if (thumb !== null) return;
     e.preventDefault();
-    try { pad.setPointerCapture(e.pointerId); } catch { /* no capture: the pad still works while the thumb stays on it */ }
-    setPad(e.pointerId, padAt(e));
+    thumb = e.pointerId;
+    try { zone.setPointerCapture(e.pointerId); } catch { /* no capture: it still works while the thumb stays in the zone */ }
+    centre = local(e); disc(ring, centre.x, centre.y, R); aim(e);
   });
-  pad.addEventListener('pointermove', e => { if (held.has(e.pointerId)) setPad(e.pointerId, padAt(e)); });
-  for (const k of ['pointerup', 'pointercancel']) pad.addEventListener(k, e => { if (held.has(e.pointerId)) setPad(e.pointerId, null); });
-  pad.addEventListener('contextmenu', e => e.preventDefault());
+  zone.addEventListener('pointermove', e => { if (e.pointerId === thumb) aim(e); });
+  const lift = e => { if (e.pointerId !== thumb) return; thumb = null; input.setStick(null); rest(); };
+  zone.addEventListener('pointerup', lift);
+  zone.addEventListener('pointercancel', lift);
+  zone.addEventListener('contextmenu', e => e.preventDefault());
 
   const pauseEl = doc.createElement('div');
   pauseEl.textContent = 'PAUSE';
@@ -155,15 +154,20 @@ export function createTouchControls(root, input, win = window, onPause = () => {
   wrap.appendChild(pauseEl);
   const place = (el, r) => Object.assign(el.style, { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px' });
   const layout = () => {
-    const { buttons, pause } = softLayout(win.innerWidth, win.innerHeight);
+    const { buttons, pause, stickZone: z } = softLayout(win.innerWidth, win.innerHeight);
     place(pauseEl, pause);
-    for (const b of buttons) place(b.id === 'dpad' ? pad : els.get(b.id), b.rect);
+    place(zone, z);
+    for (const b of buttons) {
+      if (b.id !== 'dpad') { place(els.get(b.id), b.rect); continue; }
+      home = { x: b.rect.x + b.rect.w / 2 - z.x, y: b.rect.y + b.rect.h / 2 - z.y }; R = b.rect.w * 0.4;
+      if (thumb === null) rest();
+    }
   };
   layout();
   win.addEventListener('resize', layout);
   return {
     layout,
-    show(v) { wrap.style.display = v ? '' : 'none'; if (!v) for (const id of [...held.keys()]) setPad(id, null); },
+    show(v) { wrap.style.display = v ? '' : 'none'; if (!v && thumb !== null) { thumb = null; input.setStick(null); rest(); } },
     destroy() { win.removeEventListener('resize', layout); wrap.remove(); },
   };
 }

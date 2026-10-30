@@ -24,17 +24,19 @@ const CAPTURED = new Set([...UP, ...DOWN, ...LEFT, ...RIGHT, ...FIRE, ...DROP, .
 // reads still shows as down on the next read, so a quick tap is never lost at a low frame rate.
 export function createInput(target = window, onPress = () => {}) {
   const keys = new Set(), tapped = new Set(), touchHeld = new Set(), touchTapped = new Set();
+  let stick = null; // the phone's thumb stick, { x, y, mag } while a thumb is on it (stick.js turns it into driving)
   target.addEventListener('keydown', e => {
     if (CAPTURED.has(e.code)) e.preventDefault?.();
     if (!e.repeat) onPress(e.code);
     keys.add(e.code); tapped.add(e.code);
   });
   target.addEventListener('keyup', e => keys.delete(e.code));
-  target.addEventListener('blur', () => { keys.clear(); tapped.clear(); touchHeld.clear(); touchTapped.clear(); });
+  target.addEventListener('blur', () => { keys.clear(); tapped.clear(); touchHeld.clear(); touchTapped.clear(); stick = null; });
   return {
     keys,
     touchDown(id) { touchHeld.add(id); touchTapped.add(id); },
     touchUp(id) { touchHeld.delete(id); },
+    setStick(v) { stick = v ? { x: v.x, y: v.y, mag: v.mag } : null; },
     read() {
       const seen = new Set([...keys, ...tapped]);
       const k = { ...combineKeys(seen), ...actionKeys(seen) };
@@ -43,7 +45,7 @@ export function createInput(target = window, onPress = () => {}) {
       const clamp = v => Math.max(-1, Math.min(1, v));
       return {
         throttle: clamp(k.throttle + t.throttle), steer: clamp(k.steer + t.steer),
-        fire: k.fire || t.fire, drop: k.drop || t.drop, nitro: k.nitro || t.nitro,
+        fire: k.fire || t.fire, drop: k.drop || t.drop, nitro: k.nitro || t.nitro, stick,
       };
     },
   };

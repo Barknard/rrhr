@@ -3,6 +3,7 @@ import { buildTrack } from './track/buildTrack.js';
 import { vehicleStats, driverDef } from './series/bosses.js';
 import { createSeriesFlow } from './series/flow.js';
 import { TRANSMISSIONS, drawTransmission } from './ui/transmission.js';
+import { stickDrive } from './game/stick.js';
 import { softLayout, createTouchControls, isPortrait, createFullscreenAsker, padClearX } from './game/touch.js';
 import { RIGS } from './cars/rigs/index.js';
 import { bakeRig } from './cars/rigs/rig.js';
@@ -307,6 +308,7 @@ function viewTopLeft() {
 
 function update(dt) {
   const mine = input.read();
+  if (mine.stick && player) Object.assign(mine, stickDrive(mine.stick, player)); // the phone's thumb stick drives
   throttleNow = mine.throttle ?? 0;
   if (net?.role === 'guest') {
     if (!net.session.view) { guestToLobby('THE HOST WENT BACK TO THE LOBBY'); return; }
