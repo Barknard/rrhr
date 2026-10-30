@@ -5,7 +5,8 @@ import { TILE_W, TILE_H } from '../core/iso.js';
 const A = TILE_W / 2, B = TILE_H / 2;
 const DEAD = 0.12;          // the middle of the stick does nothing (12%: thumb jitter there would swing the aim)
 const FULL_GAS = 0.55;      // full throttle from just past halfway, so the thumb never has to hold a precise distance
-const FULL_STEER = 0.5;     // radians off the aim at which steering is full lock; less than that steers less
+const FULL_STEER = 0.6;     // radians off the aim at which steering is full lock; less than that steers less
+const ON_COURSE = 0.05;     // this close to the aim the wheel stays straight: no twitching left-right that scrubs speed
 const REVERSE_ANGLE = 2.1;  // aiming this far behind the nose...
 const REVERSE_SPEED = 2;    // ...while (nearly) stopped backs out instead of grinding into a wall
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -32,5 +33,6 @@ export function stickDrive(stick, car) {
   const diff = wrap(screenToHeading(stick.x, stick.y) - car.heading);
   const fwd = (car.vx ?? 0) * Math.cos(car.heading) + (car.vy ?? 0) * Math.sin(car.heading);
   if (Math.abs(diff) > REVERSE_ANGLE && fwd < REVERSE_SPEED) return { throttle: -push, steer: -Math.sign(diff) }; // backing up turns the nose the other way
+  if (Math.abs(diff) < ON_COURSE) return { throttle: push, steer: 0 };
   return { throttle: push, steer: Math.max(-1, Math.min(1, diff / FULL_STEER)) };
 }

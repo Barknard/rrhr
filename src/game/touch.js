@@ -112,25 +112,20 @@ export function createTouchControls(root, input, win = window, onPause = () => {
     el.addEventListener('contextmenu', e => e.preventDefault());
   }
 
-  // The thumb stick, floating: a thumb anywhere in the zone becomes the stick's centre, and dragging aims the car
-  // (stick.js turns the drag into steering and gas). At rest the ring sits at its home spot, so it's easy to find.
+  // The thumb stick: fixed at its spot bottom left. A thumb anywhere in the zone steers from that fixed centre, so
+  // landing out by the rim is full gas at once (stick.js turns the offset into steering and gas).
   const zone = doc.createElement('div'), ring = doc.createElement('div'), knob = doc.createElement('div');
   zone.style.cssText = `${base};display:block`;
   ring.style.cssText = `position:absolute;box-sizing:border-box;border:${EDGE};border-radius:50%;background:${GLASS};pointer-events:none`;
   knob.style.cssText = `position:absolute;border-radius:50%;background:${GLASS_ON};pointer-events:none`;
   zone.append(ring, knob); wrap.appendChild(zone);
-  let home = { x: 0, y: 0 }, R = 60, thumb = null, centre = null;
+  let home = { x: 0, y: 0 }, R = 60, thumb = null;
   const disc = (el, cx, cy, r) => Object.assign(el.style, { left: `${cx - r}px`, top: `${cy - r}px`, width: `${2 * r}px`, height: `${2 * r}px` });
-  const rest = () => { centre = null; disc(ring, home.x, home.y, R); disc(knob, home.x, home.y, R * 0.42); };
+  const rest = () => { disc(ring, home.x, home.y, R); disc(knob, home.x, home.y, R * 0.42); };
   const local = e => { const r = zone.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
   const aim = e => {
-    const p = local(e), d = Math.hypot(p.x - centre.x, p.y - centre.y);
-    if (d > R) { // past the rim: the stick follows the thumb, so it can't be lost
-      centre = { x: p.x - (p.x - centre.x) * R / d, y: p.y - (p.y - centre.y) * R / d };
-      disc(ring, centre.x, centre.y, R);
-    }
-    const v = stickVector(p.x - centre.x, p.y - centre.y, R);
-    disc(knob, centre.x + v.x * R, centre.y + v.y * R, R * 0.42);
+    const p = local(e), v = stickVector(p.x - home.x, p.y - home.y, R);
+    disc(knob, home.x + v.x * R, home.y + v.y * R, R * 0.42);
     input.setStick(v);
   };
   zone.addEventListener('pointerdown', e => {
@@ -138,7 +133,7 @@ export function createTouchControls(root, input, win = window, onPause = () => {
     e.preventDefault();
     thumb = e.pointerId;
     try { zone.setPointerCapture(e.pointerId); } catch { /* no capture: it still works while the thumb stays in the zone */ }
-    centre = local(e); disc(ring, centre.x, centre.y, R); aim(e);
+    aim(e);
   });
   zone.addEventListener('pointermove', e => { if (e.pointerId === thumb) aim(e); });
   const lift = e => { if (e.pointerId !== thumb) return; thumb = null; input.setStick(null); rest(); };
