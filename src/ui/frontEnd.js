@@ -68,11 +68,14 @@ export function createFrontEnd(canvas, { storage = globalThis.localStorage ?? nu
   }
 
   // Mel's voice for announcer utterances, one after another; a newer line cuts the rest. Lines without clips are quiet.
+  // While a line plays the announcer counts as busy (speaking), so only a bigger moment cuts him off. Resolves when
+  // he's done (at once with the voice off).
   let voiceTurn = 0;
   function speak(...utterances) {
     const mine = ++voiceTurn;
-    if (!voice || !s.settings.voice) return;
-    utterances.filter(Boolean).reduce((p, u) => p.then(() => (mine === voiceTurn ? voice.speak(u) : null)), Promise.resolve());
+    if (!voice || !s.settings.voice) return Promise.resolve();
+    const busy = secs => announcer.speaking(secs);
+    return utterances.filter(Boolean).reduce((p, u) => p.then(() => (mine === voiceTurn ? voice.speak(u, { onStart: busy }) : null)), Promise.resolve());
   }
 
   function handle(out) {

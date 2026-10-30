@@ -9,6 +9,21 @@ const MUSIC_FADE = 1;         // s: music crossfade
 const VOICE_LEAD = 0.02;      // s: a voice line starts this far ahead, so its clips line up exactly
 const clamp01 = v => Math.max(0, Math.min(1, v));
 
+// The speech in a decoded clip as [offset, length] in seconds: text-to-speech pads every clip with ~0.1 s of quiet
+// before and ~0.25 s after, which turns into dead air where pieces of a line are stitched. A little is kept either
+// side so no word gets clipped. All quiet, or nothing to read (a fake), leaves the clip whole.
+const QUIET = 0.02, KEEP_BEFORE = 0.04, KEEP_AFTER = 0.07;
+export function speechSpan(buf) {
+  if (!buf?.getChannelData) return [0, buf?.duration ?? 0];
+  const d = buf.getChannelData(0), sr = buf.sampleRate;
+  let a = 0, b = d.length - 1;
+  while (a < d.length && Math.abs(d[a]) < QUIET) a++;
+  while (b > a && Math.abs(d[b]) < QUIET) b--;
+  if (a >= b) return [0, buf.duration];
+  const start = Math.max(0, a / sr - KEEP_BEFORE), end = Math.min(buf.duration, (b + 1) / sr + KEEP_AFTER);
+  return [start, end - start];
+}
+
 export function createAudio({ base = 'assets/', ctx = null, fetchFn = globalThis.fetch?.bind(globalThis), rand = Math.random } = {}) {
   let ac = ctx, graph = null, held = false; // held: suspend() was asked for, so unlock() leaves it asleep
   const volumes = { music: 1, sfx: 1, voice: 1 };
@@ -152,7 +167,7 @@ export function createAudio({ base = 'assets/', ctx = null, fetchFn = globalThis
       realizeMusic();
     },
     // Voice clips (paths under base) back to back on the voice bus. Resolves when done, cut, or not playable.
-    playSequence(paths, { gain = 1 } = {}) {
+    playSequence(paths, { gain = 1, onStart = null } = {}) { // onStart(seconds): the line is scheduled and runs this long
       if (!paths?.length || !bus()) return Promise.resolve();
       return new Promise(resolve => {
         const seq = { srcs: [], done: false };
@@ -166,12 +181,13 @@ export function createAudio({ base = 'assets/', ctx = null, fetchFn = globalThis
           g.connect(graph.voice);
           let t = now() + VOICE_LEAD;
           for (const buf of bufs) {
-            const src = ac.createBufferSource();
-            src.buffer = buf; src.connect(g); src.start(t);
-            t += buf.duration;
+            const src = ac.createBufferSource(), [offset, len] = speechSpan(buf);
+            src.buffer = buf; src.connect(g); src.start(t, offset, len);
+            t += len;
             seq.srcs.push(src);
           }
           seq.srcs[seq.srcs.length - 1].onended = seq.finish;
+          onStart?.(t - now());
         });
       });
     },

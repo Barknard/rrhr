@@ -33,14 +33,14 @@ export function createVoice({ audio, loadManifest = fetchManifest, gain = 1 } = 
   let manifest = null, loading = null, turn = 0;
   const load = () => (loading ??= (async () => { try { manifest = await loadManifest(); } catch { manifest = null; } })());
   return {
-    async speak(utterance) {
+    async speak(utterance, { onStart = null } = {}) { // onStart(seconds) once the line starts playing
       const mine = ++turn;
       audio.stopVoice();
       await load();
       if (mine !== turn) return; // a newer line (or stop) arrived while the manifest loaded
       const paths = voiceClips(manifest, utterance);
       if (!paths) return;
-      try { await audio.playSequence(paths, { gain }); } catch { /* a missing or broken clip: just quiet */ }
+      try { await audio.playSequence(paths, { gain, onStart }); } catch { /* a missing or broken clip: just quiet */ }
     },
     stop() { turn++; audio.stopVoice(); },
   };

@@ -88,6 +88,7 @@ for (const k of ['pointerdown', 'keydown', 'touchend']) addEventListener(k, () =
 let hushed = false; // the race is paused: everything waits
 document.addEventListener('visibilitychange', () => { if (document.hidden) audio.suspend(); else if (!hushed) audio.resume(); });
 let throttleNow = 0; // the player's throttle this step, for the engine's note
+let introHold = null; const INTRO_HOLD_MAX = 12; // the race waits (frozen before its countdown) while Mel reads the intro
 const fe = createFrontEnd(screen, { onLeave: () => { location.href = 'about:blank'; }, audio, voice });
 fe.setTouch(touchMode);
 const FAST = fastFactor(location.hostname, location.search); // debug only: run races 4x for play-testing a series
@@ -174,10 +175,16 @@ async function startScene(raceObj, mySeat, key = QUICK_TRACK, trk = key === QUIC
   fx = createFx();
   vehicles = race.cars.map(car => ({ car, rig: RIGS[car.key], baked: RIGS[car.key].baked, anim: createAnim() }));
   flash(`${vehicleStats(player.key).name} - ${WEAPONS[loadout.forward].name} + ${WEAPONS[loadout.drop].name}`, 3);
+  introHold = null;
   if (net?.role !== 'guest') { // guests get the host's lines; with King Cinder on the grid, Mel announces him instead
     const boss = race.cars.some(c => c.stats.driver === 'kingCinder');
     const intro = fe.announcer.say(boss ? 'boss_enter' : 'intro', { track: track.def.name, last: race.cars[race.cars.length - 1].name });
-    if (intro) { fe.caption(intro.text); fe.speak(intro); if (net) net.session.caption(intro.text); }
+    if (intro) { fe.caption(intro.text); if (net) net.session.caption(intro.text); }
+    // Offline, the countdown waits for Mel to finish the intro (12 s at most; at once with the voice off or no clips).
+    if (intro && !net) {
+      const hold = introHold = {};
+      Promise.race([fe.speak(intro), new Promise(r => setTimeout(r, INTRO_HOLD_MAX * 1000))]).then(() => { if (introHold === hold) introHold = null; });
+    } else if (intro) fe.speak(intro);
   }
   audio.preload([...RACE_SFX, engineFor(player.key)]);
   finishedFor = 0;
@@ -501,7 +508,7 @@ function frameStep(dt) {
     }
     if (!pm && !upright() && Math.floor(performance.now() / (TIMING.pauseBlinkSecs * 1000)) % 2) drawStyled(ctx, touchMode ? 'TAP TO RESUME' : 'PRESS ANY KEY OR CLICK', VIEW_W / 2, LAYOUT.pause.hintY, 'body', 'text', { align: 'center' });
   } else if (mode === 'race') {
-    acc += dt * FAST;
+    acc = introHold ? 0 : acc + dt * FAST;
     while (acc >= STEP && mode === 'race') { update(STEP); acc -= STEP; t += STEP; }
     if (mode !== 'race') return;
     if (race.phase === 'finished') finishedFor += dt;
