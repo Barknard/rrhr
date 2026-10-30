@@ -40,7 +40,7 @@ export function createAnnouncer({ lines = LINES, triggers = TRIGGERS, rng = Math
     return ok ? out : null;
   };
 
-  // Next unused line of this trigger that all its placeholders can fill.
+  // Next unused line of this trigger that all its placeholders can fill -> { script, index } (index into lines[trigger]).
   function pick(trigger, vars) {
     const pool = lines[trigger];
     if (!pool?.length) return null;
@@ -55,23 +55,25 @@ export function createAnnouncer({ lines = LINES, triggers = TRIGGERS, rng = Math
       if (!text) continue;
       [bag.order[bag.pos], bag.order[i]] = [bag.order[i], bag.order[bag.pos]];
       bag.last = bag.order[bag.pos++];
-      return text;
+      return { script: text, index: bag.last };
     }
     for (let i = 0; i < pool.length; i++) { // the unused lines all need something we don't have: reuse a used one
       if (i === bag.last) continue;
       const text = fill(pool[i], vars);
-      if (text) { bag.last = i; return text; }
+      if (text) { bag.last = i; return { script: text, index: i }; }
     }
     return null;
   }
 
-  // script keeps the ElevenLabs v3 delivery tags ([shouting], [laughs]...) for the voice; text is the caption.
+  // script keeps the ElevenLabs v3 delivery tags ([shouting], [laughs]...); text is the caption. index and vars let
+  // the voice find the line's recorded clips (src/audio/voice.js).
   function utter(trigger, vars) {
-    const script = pick(trigger, vars);
-    if (!script) return null;
+    const picked = pick(trigger, vars);
+    if (!picked) return null;
+    const { script, index } = picked;
     const priority = triggers[trigger]?.priority ?? 0;
     lastFired[trigger] = t; lastSpoke = t; currentPriority = priority; nextFree = t + MIN_GAP;
-    return { trigger, text: stripTags(script), script, priority };
+    return { trigger, index, vars, text: stripTags(script), script, priority };
   }
 
   // Candidate lines from this step, best first; the first one that clears every gate is spoken.

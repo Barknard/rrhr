@@ -12,8 +12,8 @@ import { normalizeCode, CODE_LENGTH } from '../net/protocol.js';
 //   seriesNext, seriesRetry, seriesQuit }.
 // Online: HOST ONLINE / JOIN ONLINE (after a one-time name) -> lobby. Picking in the lobby runs the same two
 // phases, and GO returns to the lobby READY. The host starts the race. The boss is never offered online.
-// The game has no audio (Eddie's call): sfx names are hooks for sound added later, and the announcer
-// (say / speak) is shown as captions.
+// The front end plays the sfx (ids from docs/audio/sfx-list.md) and the music, and the announcer (say / speak) is
+// shown as captions and, where Mel's clips exist, voiced. OPTIONS switches each of those on or off.
 // Drawing lives in drawScreens.js; nothing here touches the DOM.
 
 // The 14 roster keys. TODO(integration): switch to CAR_KEYS once the HD roster has landed everywhere.
@@ -33,10 +33,17 @@ export const MENU = [
   { id: 'options', label: 'OPTIONS' },
 ];
 
-export const OPTIONS = [{ key: 'captions', label: 'ANNOUNCER CAPTIONS', toggle: true }, { key: 'back', label: 'BACK' }];
+export const OPTIONS = [
+  { key: 'music', label: 'MUSIC', toggle: true }, { key: 'sfx', label: 'SOUND EFFECTS', toggle: true },
+  { key: 'voice', label: 'ANNOUNCER VOICE', toggle: true }, { key: 'captions', label: 'ANNOUNCER CAPTIONS', toggle: true },
+  { key: 'back', label: 'BACK' },
+];
+export const DEFAULT_SETTINGS = { music: true, sfx: true, voice: true, captions: true };
 
 const VS_TIME = 2.5, NAME_MAX = 10;
 const wrap = (i, n) => ((i % n) + n) % n;
+// A hover that lands on a different item ticks (mousemove fires constantly, so the same item stays quiet).
+const hovered = (out, from, to) => { if (to !== from) out.sfx = 'ui_move'; return to; };
 
 // The strips: the roster, plus King Cinder and the Slaghog once beaten (offline quick races only: the series finale
 // already has its own King Cinder, so a series never offers him).
@@ -46,9 +53,9 @@ export const vehicleList = s => (bossOn(s) ? [...VEHICLE_KEYS, BOSS.vehicle] : V
 export const pickedDriver = s => driverList(s)[s.select.driverIdx] ?? DRIVER_KEYS[0];
 export const pickedVehicle = s => vehicleList(s)[s.select.vehicleIdx] ?? VEHICLE_KEYS[0];
 
-export function createScreens({ rng = Math.random, settings = { captions: true }, playerName = '', unlocks = { series2: false, boss: false } } = {}) {
+export function createScreens({ rng = Math.random, settings = DEFAULT_SETTINGS, playerName = '', unlocks = { series2: false, boss: false } } = {}) {
   return {
-    screen: 'gate', t: 0, rng, settings: { ...settings }, unlocks: { ...unlocks }, mode: 'race', series: null, seriesIdx: 0, touch: false,
+    screen: 'gate', t: 0, rng, settings: { ...DEFAULT_SETTINGS, ...settings }, unlocks: { ...unlocks }, mode: 'race', series: null, seriesIdx: 0, touch: false,
     playerName, nameInput: '', nameFor: null, joinCode: '', joinStatus: null, joinError: null, online: null, lobby: null,
     menuIdx: 0, optIdx: 0, flash: null,
     select: { step: 'driver', driverIdx: 0, vehicleIdx: 0, row: 'vehicle' },
@@ -81,7 +88,7 @@ export function input(s, action, arg = 0) {
       if (action === 'ok' || action === 'back') skipIntro(s.intro);
       break;
     case 'title':
-      if (action === 'select') s.menuIdx = wrap(arg, MENU.length);
+      if (action === 'select') s.menuIdx = hovered(out, s.menuIdx, wrap(arg, MENU.length));
       else if (action === 'up' || action === 'down') { s.menuIdx = wrap(s.menuIdx + (action === 'up' ? -1 : 1), MENU.length); out.sfx = 'ui_move'; }
       else if (action === 'ok') {
         const item = MENU[s.menuIdx];
@@ -112,7 +119,7 @@ export function input(s, action, arg = 0) {
       break;
     case 'lobby': {
       const lb = s.lobby, item = lb.items[lb.idx];
-      if (action === 'select') lb.idx = wrap(arg, lb.items.length);
+      if (action === 'select') lb.idx = hovered(out, lb.idx, wrap(arg, lb.items.length));
       else if (['up', 'down', 'left', 'right'].includes(action)) { lb.idx = wrap(lb.idx + (action === 'up' || action === 'left' ? -1 : 1), lb.items.length); out.sfx = 'ui_move'; }
       else if (action === 'back' || (action === 'ok' && item === 'leave')) { s.screen = 'title'; s.online = null; s.lobby = null; out.leaveOnline = true; out.sfx = 'ui_back'; }
       else if (action === 'ok' && item === 'pick') { s.screen = 'select'; s.select.step = 'driver'; out.sfx = 'ui_select'; }
@@ -124,7 +131,7 @@ export function input(s, action, arg = 0) {
     }
     case 'options': {
       const opt = OPTIONS[s.optIdx];
-      if (action === 'select') s.optIdx = wrap(arg, OPTIONS.length);
+      if (action === 'select') s.optIdx = hovered(out, s.optIdx, wrap(arg, OPTIONS.length));
       else if (action === 'up' || action === 'down') { s.optIdx = wrap(s.optIdx + (action === 'up' ? -1 : 1), OPTIONS.length); out.sfx = 'ui_move'; }
       else if (action === 'back' || (action === 'ok' && opt.key === 'back')) { s.screen = 'title'; out.sfx = 'ui_back'; }
       else if (opt.toggle && (action === 'ok' || action === 'left' || action === 'right')) {
@@ -135,7 +142,7 @@ export function input(s, action, arg = 0) {
     case 'select': {
       const sel = s.select;
       if (action === 'select') { // hover or click on a strip portrait or a ride row
-        if (sel.step === 'driver') sel.driverIdx = wrap(arg, driverList(s).length); else sel.row = RIDE_ROWS[wrap(arg, RIDE_ROWS.length)];
+        if (sel.step === 'driver') sel.driverIdx = hovered(out, sel.driverIdx, wrap(arg, driverList(s).length)); else sel.row = hovered(out, sel.row, RIDE_ROWS[wrap(arg, RIDE_ROWS.length)]);
         break;
       }
       if (sel.step === 'driver') {
@@ -176,14 +183,14 @@ export function input(s, action, arg = 0) {
       const weapon = item === 'forward' || item === 'drop';
       if (s.quitAsk) { // QUIT THE SERIES? YES / NO: only YES leaves
         const q = s.quitAsk;
-        if (action === 'select') q.idx = wrap(arg, 2);
+        if (action === 'select') q.idx = hovered(out, q.idx, wrap(arg, 2));
         else if (['up', 'down', 'left', 'right'].includes(action)) { q.idx = 1 - q.idx; out.sfx = 'ui_move'; }
         else if (action === 'back' || (action === 'ok' && q.idx === 1)) { s.quitAsk = null; out.sfx = 'ui_back'; }
         else if (action === 'ok') { s.quitAsk = null; s.screen = 'title'; s.series = null; out.seriesQuit = true; out.sfx = 'ui_back'; }
         break;
       }
       if (action === 'back' && s.screen !== 'champion') { s.seriesIdx = items.indexOf('quit'); out.sfx = 'ui_move'; } // Esc or right-click only moves to QUIT
-      else if (action === 'select') s.seriesIdx = wrap(arg, items.length);
+      else if (action === 'select') s.seriesIdx = hovered(out, s.seriesIdx, wrap(arg, items.length));
       else if (weapon && (action === 'left' || action === 'right' || action === 'ok')) { // change weapons before each race
         const list = item === 'forward' ? FORWARD_WEAPONS : DROP_WEAPONS;
         s.loadout[item] = list[wrap(list.indexOf(s.loadout[item]) + (action === 'left' ? -1 : 1), list.length)];

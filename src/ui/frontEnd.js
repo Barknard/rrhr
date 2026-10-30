@@ -1,4 +1,4 @@
-import { createScreens, input, tick, typeChar, backspace, pointer, enterSeriesScreen } from './screens.js';
+import { createScreens, input, tick, typeChar, backspace, pointer, enterSeriesScreen, DEFAULT_SETTINGS } from './screens.js';
 import { createHitRegions, toCanvas } from './hitRegions.js';
 import { createTransitioner, transitionFor } from './transitions.js';
 import { loadUnlocks } from '../series/series.js';
@@ -7,30 +7,36 @@ import { loadIntroSettings, createIntroPlayer, shouldPlay, markPlayed, createGat
 import { createLavaBackdrop } from './lavaBackdrop.js';
 import { createShowcase, portraitCanvas } from './showcase.js';
 import { createAnnouncer } from '../audio/announcer.js';
+import { busVolumes } from '../audio/soundMap.js';
 import { LAYOUT, TIMING } from './theme.js';
 
-// The whole front end (gate, title, options, select, VS, series screens) with the announcer as captions, for one
-// canvas. Every screen change plays a transition over the new screen (input is held for its first moments), and the
-// mouse works everywhere: hover selects, click activates, right-click is back.
-// There is no audio (Eddie's call). The game calls frame(dt) and gets { start, actions } back: start when a race
-// should begin, actions for anything online (host, join, pick, ready, startOnline, leaveOnline, cancelJoin).
+// The whole front end (gate, title, options, select, VS, series screens) with the announcer as captions and voice,
+// for one canvas. Every screen change plays a transition over the new screen (input is held for its first moments),
+// and the mouse works everywhere: hover selects, click activates, right-click is back.
+// audio (audioPlayer.js) plays the menu sfx and the gate drone; voice (voice.js) speaks Mel's lines; the OPTIONS
+// switches set their volumes. The game calls frame(dt) and gets { start, actions } back: start when a race should
+// begin, actions for anything online (host, join, pick, ready, startOnline, leaveOnline, cancelJoin).
 const KEYMAP = {
   ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
   Enter: 'ok', Space: 'ok', Escape: 'back',
 };
 const SETTINGS_KEY = 'rrhr.settings', NAME_KEY = 'rrhr.name';
 const TYPING = new Set(['name', 'join']);
+const UI_SFX = ['ui_move', 'ui_select', 'ui_back', 'ui_buy', 'ui_broke'];
+const GATE_DRONE = 0.35; // gate_warning, quietly under the gate
 
-export function createFrontEnd(canvas, { storage = globalThis.localStorage ?? null, onLeave = () => {} } = {}) {
+export function createFrontEnd(canvas, { storage = globalThis.localStorage ?? null, onLeave = () => {}, audio = null, voice = null } = {}) {
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = false;
-  let settings = { captions: true };
+  let settings = { ...DEFAULT_SETTINGS };
   try { Object.assign(settings, JSON.parse(storage?.getItem(SETTINGS_KEY) ?? '{}')); } catch { /* bad save: defaults */ }
   const announcer = createAnnouncer({ storage });
   let savedName = '';
   try { savedName = storage?.getItem(NAME_KEY) ?? ''; } catch { /* no storage */ }
   const s = createScreens({ settings, playerName: savedName, unlocks: loadUnlocks(storage) });
   const actions = [];
+  audio?.preload(UI_SFX);
+  audio?.setVolumes(busVolumes(s.settings));
   const hits = createHitRegions(), tr = createTransitioner();
   const assets = { lava: createLavaBackdrop(), showcase: createShowcase(), portrait: portraitCanvas, hits };
   // The outgoing frame for a transition: copied off the canvas before the new screen draws over it.
@@ -61,11 +67,22 @@ export function createFrontEnd(canvas, { storage = globalThis.localStorage ?? nu
     caption = text; captionT = secs;
   }
 
+  // Mel's voice for announcer utterances, one after another; a newer line cuts the rest. Lines without clips are quiet.
+  let voiceTurn = 0;
+  function speak(...utterances) {
+    const mine = ++voiceTurn;
+    if (!voice || !s.settings.voice) return;
+    utterances.filter(Boolean).reduce((p, u) => p.then(() => (mine === voiceTurn ? voice.speak(u) : null)), Promise.resolve());
+  }
+
   function handle(out) {
     if (!out) return;
     if (out.leave) onLeave();
+    if (out.sfx) audio?.play(out.sfx);
     if (out.setSetting) {
       settings = { ...s.settings };
+      audio?.setVolumes(busVolumes(settings));
+      if (!settings.voice) { voiceTurn++; voice?.stop(); }
       try { storage?.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* not saved */ }
     }
     if (out.introStart && introSettings) {
@@ -75,7 +92,11 @@ export function createFrontEnd(canvas, { storage = globalThis.localStorage ?? nu
     if (out.gateAccept && assets.gateVideo) { assets.gateVideo.unmute(); assets.gateVideo.stop(); assets.gateVideo = null; } // the click that accepts also unmutes; then it is released
     if (out.introStop) { assets.introPlayer?.stop(); assets.introPlayer = null; }
     if (out.speak) show(out.speak);
-    if (out.say) show(out.say.map(x => announcer.say(x.trigger, x.vars)?.text).filter(Boolean).join(' '));
+    if (out.say) {
+      const lines = out.say.map(x => announcer.say(x.trigger, x.vars)).filter(Boolean);
+      show(lines.map(u => u.text).join(' '));
+      speak(...lines);
+    }
     if (out.start) { pending = out.start; announcer.save(); }
     for (const k of ['seriesNext', 'seriesRetry', 'seriesQuit']) if (out[k]) actions.push({ [k]: true });
     if (out.saveName) { try { storage?.setItem(NAME_KEY, out.saveName); } catch { /* not saved */ } }
@@ -127,6 +148,7 @@ export function createFrontEnd(canvas, { storage = globalThis.localStorage ?? nu
       s.introEnded = !!assets.introPlayer?.ended;
       handle(tick(s, dt));
       announcer.tick(dt);
+      if (s.screen === 'gate') audio?.loop('gate', 'gate_warning', { gain: GATE_DRONE }); else audio?.stopLoop('gate');
       s.captionOn = captionT > 0;
       const now = nameOf();
       if (now !== shown && now !== 'race') transition(shown, now); // the canvas still holds the old screen
@@ -148,6 +170,8 @@ export function createFrontEnd(canvas, { storage = globalThis.localStorage ?? nu
     showSeries(screen, view) { enterSeriesScreen(s, screen, view); },
     // Show an in-race announcer line (from announcer.hear) the same way the menus do.
     caption: show,
+    // ...and voice it (an utterance from announcer.say / hear), when ANNOUNCER VOICE is on.
+    speak,
     // The game owns the keyboard during a race, however the race was started.
     suspend() { s.screen = 'race'; shown = 'race'; },
     toSelect() { s.screen = 'select'; s.select.step = 'driver'; },

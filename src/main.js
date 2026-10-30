@@ -26,6 +26,9 @@ import { layoutTags, drawTags } from './render/nameTags.js';
 import { cpuInput } from './ai/cpuDriver.js';
 import { WEAPONS } from './combat/weapons.js';
 import { createFrontEnd } from './ui/frontEnd.js';
+import { createAudio } from './audio/audioPlayer.js';
+import { createVoice } from './audio/voice.js';
+import { soundsForEvents, engineFor, engineMix, musicFor, RACE_SFX } from './audio/soundMap.js';
 import { portraitCanvas, createShowcase } from './ui/showcase.js';
 import { createMinimap } from './render/minimap.js';
 import { createOnline, playerIdFrom } from './net/online.js';
@@ -79,7 +82,13 @@ let loadout = { forward: 'arc', drop: 'mine' };
 let race = null, player, camera, fx, vehicles = [], banner = null, bannerTimer = 0, t = 0;
 let mode = 'menu', combos = null, raceKey = null; // menu: the front end owns the screen; race / transmission: the game does
 const pick = arr => arr[(Math.random() * arr.length) | 0];
-const fe = createFrontEnd(screen, { onLeave: () => { location.href = 'about:blank'; } });
+// Sound: one player and Mel's voice for the page. Browsers allow audio only after a tap or key, so the first one unlocks it.
+const audio = createAudio(), voice = createVoice({ audio });
+for (const k of ['pointerdown', 'keydown', 'touchend']) addEventListener(k, () => audio.unlock(), { passive: true });
+let hushed = false; // the race is paused: everything waits
+document.addEventListener('visibilitychange', () => { if (document.hidden) audio.suspend(); else if (!hushed) audio.resume(); });
+let throttleNow = 0; // the player's throttle this step, for the engine's note
+const fe = createFrontEnd(screen, { onLeave: () => { location.href = 'about:blank'; }, audio, voice });
 fe.setTouch(touchMode);
 const FAST = fastFactor(location.hostname, location.search); // debug only: run races 4x for play-testing a series
 // The series in play (offline only): the flow says what comes next; seriesIds maps race car i to its series id.
@@ -168,8 +177,9 @@ async function startScene(raceObj, mySeat, key = QUICK_TRACK, trk = key === QUIC
   if (net?.role !== 'guest') { // guests get the host's lines; with King Cinder on the grid, Mel announces him instead
     const boss = race.cars.some(c => c.stats.driver === 'kingCinder');
     const intro = fe.announcer.say(boss ? 'boss_enter' : 'intro', { track: track.def.name, last: race.cars[race.cars.length - 1].name });
-    if (intro) { fe.caption(intro.text); if (net) net.session.caption(intro.text); }
+    if (intro) { fe.caption(intro.text); fe.speak(intro); if (net) net.session.caption(intro.text); }
   }
+  audio.preload([...RACE_SFX, engineFor(player.key)]);
   finishedFor = 0;
   fe.transition(fromScreen, 'race'); // shutter from the VS screen, static out of a transmission
   mode = 'race';
@@ -290,6 +300,7 @@ function viewTopLeft() {
 
 function update(dt) {
   const mine = input.read();
+  throttleNow = mine.throttle ?? 0;
   if (net?.role === 'guest') {
     if (!net.session.view) { guestToLobby('THE HOST WENT BACK TO THE LOBBY'); return; }
     net.session.frame(dt, mine);
@@ -300,9 +311,10 @@ function update(dt) {
     if (net?.role === 'host') net.session.step(dt, mine);
     else stepRace(race, race.cars.map(c => (c.human ? mine : cpuInput(race, c, dt))), dt);
     const line = fe.announcer.hear(race, dt);
-    if (line) { fe.caption(line.text); if (net) net.session.caption(line.text); }
+    if (line) { fe.caption(line.text); fe.speak(line); if (net) net.session.caption(line.text); }
   }
   absorbEvents(fx, race.events);
+  for (const snd of soundsForEvents(race.events, player, race)) audio.play(snd.id, { gain: snd.gain });
   narrate(race.events);
   race.events.length = 0;
   for (const v of vehicles) {
@@ -503,6 +515,18 @@ function frameStep(dt) {
     drawStyled(ctx, 'TURN YOUR PHONE', VIEW_W / 2, LAYOUT.pause.titleY - 20, 'title', 'gold', { align: 'center' });
     drawStyled(ctx, 'SIDEWAYS', VIEW_W / 2, LAYOUT.pause.hintY - 10, 'title', 'gold', { align: 'center' });
   }
+  soundFrame();
+}
+
+// Music for where we are, the player's engine and the lava bed in a race, and silence while a race is paused.
+function soundFrame() {
+  const hush = mode === 'race' && (paused || (!!pm && !net));
+  if (hush !== hushed) { hushed = hush; if (hush) audio.suspend(); else if (!document.hidden) audio.resume(); }
+  const racing = mode === 'race' && race && player;
+  audio.music(musicFor(racing ? 'race' : 'menu', track?.def?.name));
+  if (racing && race.phase !== 'finished') audio.loop('engine', engineFor(player.key), engineMix(player, throttleNow));
+  else audio.stopLoop('engine');
+  if (racing) audio.loop('lava', 'lava_amb', { gain: 0.3 }); else audio.stopLoop('lava');
 }
 const controls = createTouchControls(document.body, input, window, openPauseMenu);
 controls.show(false);
@@ -572,7 +596,7 @@ window.addEventListener('pagehide', () => net?.session.close());
 // Debug handle for the browser console and automated play-tests: on localhost, or anywhere with ?debug.
 if (debugEnabled(location.hostname, location.search)) window.rrhr = {
   get race() { return race; }, get player() { return player; }, get world() { return world; }, get track() { return track; }, input,
-  get mode() { return mode; }, fe, get net() { return net; }, online, get series() { return series; }, get trans() { return trans; },
+  get mode() { return mode; }, fe, audio, voice, get net() { return net; }, online, get series() { return series; }, get trans() { return trans; },
   render: () => render(), update: dt => update(dt ?? STEP), newRace, frameStep: dt => frameStep(dt ?? STEP),
   skipTransmission, seriesAfterRace: () => { finishedFor = Math.max(finishedFor, TIMING.seriesResultsSecs); seriesAfterRace(); },
 };
